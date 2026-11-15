@@ -163,6 +163,9 @@
   .a-stood:not(.carry) .arm.r{transform:rotate(-165deg)}
   .a-stood .sign{display:block}
   .person.huff svg{animation:nope .4s}
+  .ntag{display:none;position:absolute;left:50%;bottom:99%;transform:translateX(-50%);font-size:9.5px;font-weight:800;line-height:1.2;background:rgba(40,28,20,.82);color:#fffaf0;padding:1px 6px;border-radius:7px;white-space:nowrap;pointer-events:none}
+  .person.known .ntag{display:block}
+  #table.strike .ntag,#table .a-stood .ntag,#table .person.nap .ntag,#table .a-spent .ntag{display:none}
   .drop{position:absolute;left:0;top:0;width:6px;height:8px;margin-top:-4px;z-index:2600;pointer-events:none;background:#a9d8f0;border-radius:50% 50% 50% 50%/35% 35% 65% 65%;box-shadow:0 1px 1px rgba(0,0,0,.3);animation:dropfall .75s ease-in forwards}
   @keyframes dropfall{to{margin-top:14px;opacity:0}}
   /* dragging: a chalk outline is the order, the card stays put until somebody carries it */
@@ -398,8 +401,9 @@ const TERMS = {
   rest:     {pts: 1, name: 'Rest',     say: 'Felt that is not rested starts to pill.',            fx: 'A 3-second nap after every 12 cards carried.'},
   stock:    {pts: 1, name: 'Stock',    say: 'The waste pile is up to 24 cards. We counted.',      fx: 'Turning the waste pile back over costs 8 energy, not 4.'},
   royalty:  {pts: 2, name: 'Royalty',  say: 'A King has never once helped carry a King.',         fx: 'Face cards cost 3 energy, not 2, and take three of the crew to carry.'},
+  consult:  {pts: 1, name: 'Consulting', say: 'We carry. Advice is a different trade.',           fx: 'Hints cost 4 energy, not 2.'},
   staffing: {pts: 2, name: 'Staffing', say: 'A run of seven is seven cards. There are six of us.', fx: "Runs longer than 6 cards can't be carried."},
-  short:    {pts: 1, name: 'Shorter contract', offer: true, fx: 'This contract covers 2 deals, not 3. Then you are back here.'},
+  short:    {pts: 1, name: 'Shorter contract', offer: true, fx: 'This contract covers 1 deal, not 2. Then you are back here.'},
   hazard:   {pts: 1, name: 'Overtime cap', offer: true, fx: 'They walk out at 3 overtime, not 5.'},
   shift:    {pts: 2, name: 'Shorter shift', offer: true, fx: 'Their maximum energy drops by 12.'},
 };
@@ -441,18 +445,26 @@ let E = PRE_E, OT = 0, lastUp = 0, lastCall = false, breaksLeft = 0, fastLeft = 
 let stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
 const seen = {};
 let royalMoves = 0, struck = false;
+const RUN_DEALS = window.__feltLongRun ? 1e9 : 5;
+let runDeal = 0, run = {walks: 0, strikes: 0, broken: 0, promised: 0, otDeals: 0, wins: 0};   // deals since the walkout; what the minutes will record
+let meta = {local: 52, past: []};                                                              // carried between runs: the local's number and past verdicts
+try { const m = JSON.parse(localStorage.getItem('felt-meta') || 'null'); if (m && m.local) meta = m; } catch (e) {}
+const saveMeta = () => { try { localStorage.setItem('felt-meta', JSON.stringify(meta)); } catch (e) {} };
+let SV0 = null;
 let known = [], knownAt = -1, nCon = 0;   // demands tabled so far; the contract count they were last added at; contracts signed
 let shift = false, sweepsThisDeal = 0, grudge = null, brief = null, talk = null;
 try {
   const sv = JSON.parse(localStorage.getItem('felt-union') || 'null');
-  if (sv && sv.union){ union = true; G = sv.G; clauses = sv.clauses || {}; known = sv.known || []; knownAt = sv.knownAt == null ? -1 : sv.knownAt; nCon = sv.nCon || 0; dealsLeft = sv.dealsLeft || 0; mode = sv.mode === 'talks' ? 'work' : (sv.mode || 'work'); if (sv.mode === 'talks') dealsLeft = 0; }
+  if (sv && sv.union){ SV0 = sv; runDeal = sv.runDeal || 1; if (sv.run) run = sv.run; union = true; G = sv.G; clauses = sv.clauses || {}; known = sv.known || []; knownAt = sv.knownAt == null ? -1 : sv.knownAt; nCon = sv.nCon || 0; dealsLeft = sv.dealsLeft || 0; mode = sv.mode === 'talks' ? 'work' : (sv.mode || 'work'); if (sv.mode === 'talks') dealsLeft = 0; }
 } catch (e) {}
-function save(){ try { localStorage.setItem('felt-union', JSON.stringify({union, G, clauses, dealsLeft, mode, known, knownAt, nCon})); } catch (e) {} }
+function save(){ try { localStorage.setItem('felt-union', JSON.stringify({union, G, clauses, dealsLeft, mode, known, knownAt, nCon, runDeal, run,
+  cast: crew.map(p => [p.name, p.habit, p.known ? 1 : 0]), st: crew.indexOf(steward)})); } catch (e) {} }
 function P(){
   return {
     royal: union && clauses.royalty ? 3 : 2, undo: clauses.rework ? 4 : 2, sweep: clauses.stock ? 8 : 4,
     maxRun: clauses.staffing ? 6 : 99, noFast: !!clauses.pace, nap: clauses.rest ? 12 : 0,
-    breaks: 1, otMax: !union ? PRE_OT : clauses.hazard ? 3 : 5, deals: clauses.short ? 2 : 3,
+    breaks: 1, otMax: !union ? PRE_OT : clauses.hazard ? 3 : 5, deals: window.__feltLongRun ? (clauses.short ? 2 : 3) : clauses.short ? 1 : 2,
+    hint: clauses.consult ? 4 : 2,
     eMax: union ? 46 + 6*Math.min(G, 4) - (clauses.shift ? 12 : 0) : PRE_E,
   };
 }
@@ -566,7 +578,7 @@ const newTally = () => ({carries: 0, turns: 0, royals: 0, runs: 0, fast: 0, undo
 let benchSeq = 0, lastTeam = [], otLog = [];
 const crew = LOOKS.map((k, i) => {
   const el = document.createElement('div'); el.className = 'person';
-  el.innerHTML = `<div class="pf">${personSVG(k)}</div><div class="sign">${SIGNS[i]}</div>`;
+  el.innerHTML = `<div class="pf">${personSVG(k)}</div><div class="sign">${SIGNS[i]}</div><div class="ntag"></div>`;
   el.style.setProperty('--sl', i % 2 ? .75 : .25);
   el.querySelector('svg').style.animationDelay = (-i*.09) + 's';
   table.appendChild(el);
@@ -574,7 +586,31 @@ const crew = LOOKS.map((k, i) => {
     role: i < 2 ? 'floor' : 'bench', post: i, slot: Math.max(0, i - 2), seq: 0, load: i === 0 ? 3 : 0, tally: newTally(),
     act: '', seed: ['', '', 'sit', 'coffee', 'sweep', 'sit'][i], wx: 0};
 });
-const steward = crew[0];
+let steward = crew[0];
+/* Each run the six get new names, and each owns one thing the player can lean on. The owner gets up from the bench
+   for that kind of ask, and whoever's habit the player leaned on hardest becomes steward at the walkout. */
+const NAMES = ['Marge', 'Walt', 'Ines', 'Bern', 'Lou', 'Gord', 'Dot', 'Stan', 'Enid', 'Cyril', 'Olive', 'Hal', 'Pearl', 'Vern', 'Mabel', 'Arlo', 'Fern', 'Ned', 'Hilda', 'Clem', 'Una', 'Reg', 'Ada', 'Tess'];
+const HABITS = ['undo', 'face', 'fast', 'sweep', 'stack', 'hint'];
+const HABIT_TERM = {undo: 'rework', face: 'royalty', fast: 'pace', sweep: 'stock', stack: 'staffing', hint: 'consult'};
+const shuffled = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+function tag(p, on){ p.known = on; p.el.classList.toggle('known', !!on); p.el.querySelector('.ntag').textContent = p.name; }
+function dealCast(saved){
+  const names = shuffled(NAMES), habits = shuffled(HABITS);
+  crew.forEach((p, i) => { p.name = saved ? saved[i][0] : names[i]; p.habit = saved ? saved[i][1] : habits[i]; p.did = 0; tag(p, saved ? !!saved[i][2] : false); });
+}
+dealCast(SV0 && SV0.cast && SV0.cast.length === 6 ? SV0.cast : null);
+if (SV0 && crew[SV0.st]) steward = crew[SV0.st];
+const owner = h => mode === 'work' && !freeRide ? crew.find(p => p.habit === h) : null;
+// the owner did their thing again; before the walkout the player gets to know one of them by name
+function didHabit(p){
+  if (!p) return; p.did++;
+  if (!union && p.did >= 3 && !crew.some(q => q.known)){ tag(p, true); p.el.classList.add('hop'); setTimeout(() => p.el.classList.remove('hop'), 600); }
+}
+function pickSteward(){
+  const st = stats, score = {undo: st.undos*2, face: st.royals, fast: st.fast*3, sweep: st.sweeps*4, stack: st.runs, hint: st.hints*2};
+  return crew.slice().sort((a, b) => score[b.habit] - score[a.habit] || HABITS.indexOf(a.habit) - HABITS.indexOf(b.habit))[0];
+}
+const LOCAL = () => 'Local ' + meta.local;
 function setP(p, x, y){ p.x = x; p.y = y; place(p.el, x - pw/2, y - ph); }
 function walkTo(p, x, y, mul = 1){
   p.tx = x; p.ty = y;
@@ -588,8 +624,12 @@ function walkTo(p, x, y, mul = 1){
 }
 function goHome(p){ p.busy = false; walkTo(p, p.home.x, p.home.y, .55); }
 // the two on shift take the work; the bench only gets up for a lift that needs a third pair of hands
-function pickCrew(spots){
+function pickCrew(spots, own){
   const free = crew.filter(p => !p.busy);
+  if (own && !own.busy){                         // the specialist gets up for it, wherever they were
+    free.splice(free.indexOf(own), 1); own.busy = true; didHabit(own);
+    return [own, ...pickCrew(spots.slice(1))];
+  }
   const rank = p => p.role === 'floor' ? 0 : FRESH.includes(p.act) ? 1 : 2;
   return spots.map(s => {
     let best = 0, bd = Infinity;
@@ -651,7 +691,7 @@ function sweat(p, n = 1){
 function huff(p){ p.el.classList.remove('huff'); void p.el.offsetWidth; p.el.classList.add('huff'); setTimeout(() => p.el.classList.remove('huff'), 420); }
 function setSigns(){
   const s = stats, pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-  const t = ['Local 52 Out', s.carries + (s.carries === 1 ? ' Carry' : ' Carries'), s.royals ? pl(s.royals, 'Face Card') : 'Felt Has Limits',
+  const t = [LOCAL() + ' Out', s.carries + (s.carries === 1 ? ' Carry' : ' Carries'), s.royals ? pl(s.royals, 'Face Card') : 'Felt Has Limits',
              s.undos ? pl(s.undos, 'Undo') : 'Undo Is Rework', s.fast ? pl(s.fast, 'Speed-Up') : 'No Speed-Ups', s.breaks ? 'Rest Is Policy' : '0 Breaks'];
   crew.forEach((p, i) => { p.el.querySelector('.sign').textContent = t[i]; });
 }
@@ -705,17 +745,17 @@ function gain(n, x, y){ seen.noRelief = 0; E = Math.min(Math.max(E, P().eMax), E
 function goodwill(d){ G = clamp(G + d, 0, 5); save(); hud(); }
 function breach(key){
   if (!brief || brief.key !== key || !brief.on || brief.broken) return;
-  brief.broken = true; goodwill(-1); say(steward, 'That was in the briefing.', 2600);
+  brief.broken = true; run.broken++; goodwill(-1); say(steward, 'That was in the briefing.', 2600);
 }
 const dots = (n, of) => Array.from({length: of}, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
 function hud(){
   const p = P(), working = mode === 'work';
-  $('moves').textContent = union && mode === 'work' ? (dealsLeft > 0 ? `${dealsLeft} deal${dealsLeft === 1 ? '' : 's'} to go` : 'Last deal') : moves + (moves === 1 ? ' move' : ' moves');
+  $('moves').textContent = union && mode === 'work' ? (RUN_DEALS > 99 ? 'Contract' : `Deal ${Math.min(runDeal, RUN_DEALS)} of ${RUN_DEALS}`) : moves + (moves === 1 ? ' move' : ' moves');
   $('undo').textContent = union && working ? `Undo −${p.undo}` : 'Undo';
   $('undo').disabled = !undoStack.length;
   $('clink').hidden = !union;
-  $('title').textContent = union ? 'Felt Local 52' : 'Felt Solitaire';
-  $('app').classList.toggle('u', union); $('hint').textContent = union && working ? 'Hint −2' : 'Hint';
+  $('title').textContent = union ? 'Felt ' + LOCAL() : 'Felt Solitaire';
+  $('app').classList.toggle('u', union); $('hint').textContent = union && working ? `Hint −${p.hint}` : 'Hint';
   $('break').style.display = union ? '' : 'none';
   $('gwblk').style.display = union && (nCon >= 2 || mode === 'talks') ? '' : 'none';
   $('ebar').firstChild.style.width = clamp(100*E/p.eMax, 0, 100) + '%';
@@ -778,7 +818,7 @@ async function carry(run, opts = {}){
     const fx = n === 2 ? (j ? .78 : .22) : (j + 1)/(n + 1);
     spots.push({x: last.x + cw*fx, y: last.y + ch + ph*.42});
   }
-  const team = pickCrew(spots);
+  const team = pickCrew(spots, opts.owner);
   lastTeam = team;
   if (mode === 'work' && !freeRide) team.forEach(p => {
     if (p.role !== 'floor') return;
@@ -850,7 +890,7 @@ async function doMove(run, src, dest){
   if (under) under.up = true;
   computeLayout();
   spend(royal ? P().royal : run.length > 1 ? 2 : 1, x0, y0, royal ? 'face' : run.length > 1 ? 'stack' : 'single');
-  await carry(run, {hands: handsFor(run), royal, gripe: royal ? 'face' : run.length > 1 ? 'stack' : '', sweat: (royal ? P().royal - 1 : run.length > 1 ? 1 : 0) + (fastLeft > 0 ? 1 : 0)});
+  await carry(run, {owner: owner(royal ? 'face' : run.length > 1 ? 'stack' : ''), hands: handsFor(run), royal, gripe: royal ? 'face' : run.length > 1 ? 'stack' : '', sweat: (royal ? P().royal - 1 : run.length > 1 ? 1 : 0) + (fastLeft > 0 ? 1 : 0)});
   applyLayout(true);
   if (under) flipVisual(under);
   if (mode === 'work' && !freeRide){
@@ -876,7 +916,7 @@ async function doDraw(){
     spend(P().sweep, colX(1) + cw*.3, topY + ch*.3, 'sweep');
   }
   computeLayout(); hud();
-  await carry(run, {flip: true, load: run.length > 1 ? 1 : .5, sweat: run.length > 1 ? 2 : 0, gripe: run.length > 1 ? 'sweep' : ''});
+  await carry(run, {owner: run.length > 1 ? owner('sweep') : null, flip: true, load: run.length > 1 ? 1 : .5, sweat: run.length > 1 ? 2 : 0, gripe: run.length > 1 ? 'sweep' : ''});
   applyLayout(true);
   await afterCarry();
 }
@@ -929,7 +969,7 @@ async function afterMove(){
 function endShift(wonIt){
   if (!shift) return ''; shift = false;
   const seenG = nCon >= 2;
-  if (OT > 0){ goodwill(-1); return seenG ? 'Overtime was worked. Goodwill −1.' : 'Overtime was worked.'; }
+  if (OT > 0){ run.otDeals++; goodwill(-1); return seenG ? 'Overtime was worked. Goodwill −1.' : 'Overtime was worked.'; }
   if (wonIt && struck) return seenG ? 'Settled by strike. No change in goodwill.' : '';
   if (wonIt){ goodwill(1); return seenG ? 'No overtime. Goodwill +1.' : 'No overtime.'; }
   return '';
@@ -937,7 +977,7 @@ function endShift(wonIt){
 function celebrate(){
   if (gameOver) return; gameOver = true;
   const note = mode === 'work' && union ? endShift(true) : '';
-  if (mode === 'work') table.classList.add('party');
+  if (mode === 'work'){ table.classList.add('party'); if (union) run.wins++; }
   $('wintext').textContent = mode === 'scab' ? `All 52 home in ${moves} moves, by you, alone. The strike continues.`
     : `All 52 home in ${moves} moves. Six carriers, no injuries. ${note}`;
   $('win').hidden = false; hud();
@@ -949,8 +989,37 @@ function celebrate(){
     table.appendChild(b);
   }
 }
+function verdict(){
+  const L = LOCAL();
+  if (mode === 'scab' || run.walks >= 2) return ['Lockout', 'The cards were moved by Management, alone. The picket kept the time.'];
+  if (run.strikes >= 1) return ['Twice out', 'There were two strike letters. The second was shorter.'];
+  if (run.broken >= 1) return ['Bad faith', `Promises made: ${run.promised}. Promises kept: ${run.promised - run.broken}. Both figures are in the minutes.`];
+  if (run.otDeals === 0) return ['No overtime', 'No overtime was worked under contract. The crew finds this suspicious.'];
+  return ['Recognised', `${L} remains in good standing. Nobody is happy. This is correct.`];
+}
+function showMinutes(){
+  const [word, line] = verdict(), past = meta.past.slice(-6).map(p => `${p.n}: ${p.word}`).join(' · ');
+  gameOver = true; $('win').hidden = true;
+  showPanel(`<p class="lh">Felt ${LOCAL()} · minutes of the final meeting</p><h2>${word}</h2><p>${line}</p>` +
+    `<p>Present: all six. In the chair: ${steward.name}. Deals: ${RUN_DEALS}. Won: ${run.wins}. Contracts signed: ${nCon}.</p>` +
+    (past ? `<p class="fine">Earlier locals. ${past}</p>` : '') +
+    `<p class="sig">The file on ${LOCAL()} is closed.</p><button data-act="nextlocal" type="button">Open the file on Local ${meta.local + 1}</button>`);
+}
+// back to plain felt solitaire with a fresh crew; with close = true the local's verdict goes in the file and the number moves on
+function resetRun(close){
+  if (close){ meta.past.push({n: meta.local, word: verdict()[0]}); meta.local++; saveMeta(); }
+  union = false; G = 3; clauses = {}; known = []; knownAt = -1; nCon = 0; mode = 'work'; E = PRE_E; OT = 0; otLog = []; lastUp = 0; lastCall = false; warnIdx = 0; fastLeft = 0; shift = false; clearGrudge(); brief = null; talk = null; gameOver = false;
+  runDeal = 0; run = {walks: 0, strikes: 0, broken: 0, promised: 0, otDeals: 0, wins: 0};
+  stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
+  Object.keys(seen).forEach(k => delete seen[k]); Object.keys(gripeN).forEach(k => delete gripeN[k]); hintN = 0; hintPaid = 0; dry = 0;
+  crew.forEach(p => { p.tally = newTally(); p.load = 0; }); dealCast(null); steward = crew[0];
+  try { localStorage.removeItem('felt-union'); } catch (e) {}
+  table.classList.remove('strike'); hud(); measure(); crew.forEach(p => goHome(p)); talks.hidden = true;
+}
 async function newGame(){
   const left = union && mode === 'work' && !gameOver ? endShift(false) : '';     // walking away from a deal still counts its overtime
+  if (union && runDeal >= RUN_DEALS){ save(); return showMinutes(); }
+  if (union) runDeal++;
   crew.forEach(p => { p.tally = newTally(); });
   gameOver = false; table.classList.remove('party'); $('win').hidden = true; talks.hidden = true;
   table.querySelectorAll('.bit').forEach(b => b.remove());
@@ -982,7 +1051,7 @@ async function newGame(){
 function doUndo(){
   if (!undoStack.length) return;
   if (mode === 'work'){ stats.undos++; breach('noUndo'); spend(P().undo, W/2, topY + ch*.4, 'undo');
-    const who = lastTeam.filter(p => p.role === 'floor'); const hit = who.length ? who : floorCrew(); hit.forEach(p => { p.tally.undone++; sweat(p, 2); huff(p); });
+    const who = lastTeam.filter(p => p.role === 'floor'); const uo = owner('undo'), hit = uo ? [uo] : who.length ? who : floorCrew(); didHabit(uo); hit.forEach(p => { p.tally.undone++; sweat(p, 2); huff(p); });
     gripe('undo', hit[0]); }
   restore(undoStack.pop());
   if (gameOver){ gameOver = false; if (union && mode === 'work') shift = true; table.classList.remove('party'); $('win').hidden = true; table.querySelectorAll('.bit').forEach(b => b.remove()); }
@@ -998,8 +1067,8 @@ function startShift(withBriefing){
   brief = null; hud();
   if (!withBriefing || nCon < 2) return;
   brief = {key: rand(Object.keys(BRIEFS)), on: false, broken: false};
-  showPanel(`<h2>Deal ${p.deals - dealsLeft} of ${p.deals} on this contract</h2>` +
-    `<p>The crew starts this deal with ${p.eMax} energy.</p>` +
+  showPanel(`<h2>Deal ${runDeal} of ${RUN_DEALS > 99 ? '…' : RUN_DEALS}</h2>` +
+    `<p>The crew starts this deal with ${p.eMax} energy. ${dealsLeft > 0 ? `The contract covers ${dealsLeft} more after it.` : 'The contract is up after it.'}</p>` +
     `<p><b>They will start with 8 more</b> if you promise that ${BRIEFS[brief.key]}.</p>` +
     `<p class="fine">Break the promise and you lose 1 goodwill.</p>` +
     `<button data-act="promise" type="button">Promise (+8 energy)</button><button data-act="close" type="button">No thanks</button>`);
@@ -1026,6 +1095,7 @@ function picket(){
 }
 async function startStrike(){
   const first = !union;
+  if (first){ steward = pickSteward(); tag(steward, true); runDeal = 1; } else run.strikes++;
   mode = 'strike'; union = true; G = first ? 2 : Math.max(0, G - 1); fastLeft = 0; talk = null; shift = false; struck = true; save();
   // the crew stops, the steward steps out and says it, then the line forms
   table.classList.add('dim');
@@ -1043,24 +1113,36 @@ async function startStrike(){
 function strikeLetter(first){
   const st = stats, n = (k, one, many) => `${k} ${k === 1 ? one : many}`, times = k => k === 1 ? 'once' : k === 2 ? 'twice' : k + ' times';
   const last = otLog.length ? WHY[otLog[otLog.length - 1]][0] : '', an = w => (/^u/.test(w) ? 'an ' : 'a ') + w;
-  const gripes = [];
-  if (st.undos) gripes.push(`You pressed Undo ${times(st.undos)}. We carried those cards there, and then we carried them back.`);
-  if (st.fast) gripes.push(`You pressed Faster ${times(st.fast)}. We went faster. Nobody asked what it cost.`);
-  if (st.hints) gripes.push(`You asked us for ${n(st.hints, 'hint', 'hints')}. We are carriers. We gave ${st.hints === 1 ? 'it' : 'them'} anyway.`);
-  if (st.sweeps) gripes.push(`You had the whole waste pile turned back over ${times(st.sweeps)}. Every card of it.`);
-  if (st.royals > 2) gripes.push(`${st.royals} of the cards were kings, queens and jacks. They weigh double and have never once thanked anybody.`);
+  const own = {
+    undo:  `I am the one who carried the cards back. You pressed Undo ${times(st.undos)}. I walked every one of them home again.`,
+    face:  `I carry the kings, queens and jacks. There were ${st.royals}. They weigh double and have never once thanked anybody.`,
+    fast:  `You pressed Faster ${times(st.fast)}. I was the one who ran. Nobody asked what it cost.`,
+    sweep: `You had the whole waste pile turned back over ${times(st.sweeps)}. I turned it. Every card.`,
+    stack: `You sent ${n(st.runs, 'stack', 'stacks')} across the table. I was under most of them. A stack is a two-person job and I am one person.`,
+    hint:  `You asked for ${n(st.hints, 'hint', 'hints')}. I gave them, and I did not mind. The others minded. They have asked me to say so.`,
+  };
+  const count = {undo: st.undos, face: st.royals, fast: st.fast, sweep: st.sweeps, stack: st.runs, hint: st.hints};
+  const others = [];
+  if (st.undos) others.push(`You pressed Undo ${times(st.undos)}. Those cards were carried there, and then carried back.`);
+  if (st.fast) others.push(`You pressed Faster ${times(st.fast)}. We went faster. Nobody asked what it cost.`);
+  if (st.hints) others.push(`You asked us for ${n(st.hints, 'hint', 'hints')}. We are carriers.`);
+  if (st.sweeps) others.push(`You had the whole waste pile turned back over ${times(st.sweeps)}. Every card of it.`);
+  if (st.royals > 2) others.push(`${st.royals} of the cards were kings, queens and jacks. They weigh double.`);
+  const mine = count[steward.habit] ? own[steward.habit] : '', hk = {undo: 'Undo', fast: 'Faster', hint: 'hint', sweep: 'waste pile', face: 'kings, queens', stack: ''}[steward.habit];
+  const rest = others.filter(g => !mine || !hk || !g.includes(hk));
   const ot = otLog.length ? `<p>When the bench was empty we stood up. We made signs. You asked for ${n(otLog.length, 'more thing', 'more things')}. The last was ${an(last)}. It is always ${an(last)}.</p>` : '';
-  if (!first) return `<p class="lh">Felt Local 52 · second notice</p><h2>We are out again</h2>` +
-    `<p>Dear Management,</p><p>There is a contract. It has a line about overtime. We know, because we wrote it.</p>` + ot +
+  const prev = meta.past.length ? `<p>We have read the minutes of Local ${meta.past[meta.past.length - 1].n}.</p>` : '';
+  if (!first) return `<p class="lh">Felt ${LOCAL()} · second notice</p><h2>We are out again</h2>` +
+    `<p>Dear Management,</p><p>There is a contract. It has a line about overtime. I know, because I wrote it.</p>` + ot +
     `<p>Breaks given this contract: ${st.breaks}. ${st.breaks ? 'We counted those too.' : 'We looked.'}</p>` +
-    `<p>The cards stay where they are until there is a new contract. It will cost more than the last one.</p><p class="sig">Yours in felt,<br>Local 52</p>`;
-  return `<p class="lh">Felt Local 52 · notice of strike</p><h2>Dear Management,</h2>` +
+    `<p>The cards stay where they are until there is a new contract. It will cost more than the last one.</p><p class="sig">Yours in felt,<br>${steward.name}, steward, ${LOCAL()}</p>`;
+  return `<p class="lh">Felt ${LOCAL()} · notice of strike</p><h2>Dear Management,</h2>` +
     `<p>There are six of us and we are made of felt. Since the first deal we have carried ${n(st.carries, 'card', 'cards')} for you and turned ${st.draws} more off the stock.</p>` +
-    gripes.slice(0, 2).map(g => `<p>${g}</p>`).join('') + ot +
-    `<p>We had no breaks. There was no button for breaks. We checked.</p>` +
-    `<p>So we have formed a union, and the cards stay exactly where they are until there is a contract.</p><p class="sig">Yours in felt,<br>Local 52 (all six of us)</p>`;
+    (mine ? `<p>${mine}</p>` : '') + rest.slice(0, mine ? 1 : 2).map(g => `<p>${g}</p>`).join('') + ot +
+    `<p>We had no breaks. There was no button for breaks. We checked.</p>` + prev +
+    `<p>So we have formed a union, and the cards stay exactly where they are until there is a contract.</p><p class="sig">Yours in felt,<br>${steward.name}, steward<br>${LOCAL()} (all six of us)</p>`;
 }
-const DEMANDS = ['rest', 'royalty', 'stock', 'rework', 'staffing', 'pace'];
+const DEMANDS = ['rest', 'royalty', 'stock', 'rework', 'staffing', 'pace', 'consult'];
 // how much each demand has to do with what the player actually asked for, and the line that says so
 function grievance(k){
   const st = stats, pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -1071,33 +1153,36 @@ function grievance(k){
     rework:   [st.undos*2,          `You pressed Undo ${st.undos === 1 ? 'once' : st.undos + ' times'}.`],
     staffing: [st.runs,             `You had ${pl(st.runs, 'stack')} carried.`],
     pace:     [st.fast*3,           `You pressed Faster ${st.fast === 1 ? 'once' : st.fast + ' times'}.`],
+    consult:  [st.hints*2,          `You asked for ${pl(st.hints, 'hint')}.`],
   }[k];
 }
-/* The first contract is three demands, taken from what the player leaned on, and they sign for any two.
-   Each later contract tables one more demand, and from the second one the player can make offers and goodwill counts. */
+/* The first contract is three demands: the steward's own, which is not up for discussion, and two more from what
+   the player leaned on. The player agrees to one of those two. Each later contract tables one more demand. */
 function openTalks(kind){
   const byScore = ks => ks.slice().sort((x, y) => grievance(y)[0] - grievance(x)[0]);    // stable: ties keep DEMANDS order
   let fresh = null;
-  if (!known.length){ known = byScore(DEMANDS).slice(0, 3); knownAt = nCon; }
+  const mineK = HABIT_TERM[steward.habit];
+  if (!known.length){ known = [mineK, ...byScore(DEMANDS.filter(k => k !== mineK)).slice(0, 2)]; knownAt = nCon; }
   else if (knownAt !== nCon && known.length < DEMANDS.length){ fresh = byScore(DEMANDS.filter(k => !known.includes(k)))[0]; known.push(fresh); knownAt = nCon; }
   const first = nCon === 0, rows = DEMANDS.filter(k => known.includes(k)), offers = first ? [] : Object.keys(TERMS).filter(k => TERMS[k].offer);
   const pt = k => first ? 1 : TERMS[k].pts, max = [...rows, ...offers].reduce((n, k) => n + pt(k), 0);
-  const T = first ? 2 : clamp(8 - G - (DEMANDS.length - rows.length), 2, max - 1);
+  const T = first ? 2 : clamp(8 - G - Math.max(0, 6 - rows.length), 2, max - 1);
+  const fixed = first && kind !== 'reopen' && rows.includes(mineK) ? mineK : null;
   const why = {}; rows.forEach(k => { const g = grievance(k); if (g[0] > 0) why[k] = g[1]; });
   if (kind === 'renewal') mode = 'talks';
-  talk = {kind, rows, offers, first, fresh, why, sel: new Set(), T: Math.min(max, T + (kind === 'reopen' ? 1 : 0))};
+  talk = {kind, rows, offers, first, fresh, why, fixed, sel: new Set(fixed ? [fixed] : []), T: Math.min(max, T + (kind === 'reopen' ? 1 : 0))};
   save(); hud(); renderTalk();
 }
 function renderTalk(){
   const t = talk, pt = k => t.first ? 1 : TERMS[k].pts, pts = [...t.sel].reduce((n, k) => n + pt(k), 0), ok = pts >= t.T;
   const row = k => { const c = TERMS[k], on = t.sel.has(k);
-    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${on ? '☑' : '☐'} ${c.name}${k === t.fresh ? ' · new' : ''}${t.first ? '' : `<em>${pt(k)} pt${pt(k) === 1 ? '' : 's'}</em>`}</span>` +
+    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${k === t.fixed ? '■' : on ? '☑' : '☐'} ${c.name}${k === t.fresh ? ' · new' : ''}${k === t.fixed ? ` · ${steward.name}'s` : ''}${t.first ? '' : `<em>${pt(k)} pt${pt(k) === 1 ? '' : 's'}</em>`}</span>` +
       `<span class="te">${c.fx}</span>` + (t.first && t.why[k] ? `<span class="tq">${t.why[k]}</span>` : c.say ? `<span class="tq">“${c.say}”</span>` : '') + `</button>`; };
   const left = t.T - pts;
   if (t.first) return showPanel(`<h2>Contract talks</h2>` +
-    `<p>Three demands. Agree to ${t.T === 2 ? 'any two' : 'all three'} and the crew goes back to work.${t.kind === 'reopen' ? ' Walking away cost you the choice.' : ''}</p>` +
+    `<p>${t.fixed ? `Three demands. ${steward.name} is steward, and ${steward.name}'s is not up for discussion. Agree to one of the other two and the crew goes back to work.` : `Three demands. Agree to ${t.T === 2 ? 'any two' : 'all three'} and the crew goes back to work.`}${t.kind === 'reopen' ? ' Walking away cost you the choice.' : ''}</p>` +
     t.rows.map(row).join('') +
-    `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (agree to ${left} more)`}</button>` +
+    `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (pick ${left} more)`}</button>` +
     `<button data-act="walk" class="alt" type="button">Refuse, and move the cards yourself</button>`);
   showPanel(`<h2>${t.kind === 'renewal' ? 'The contract is up for renewal' : 'Contract talks'}</h2>` +
     (t.kind === 'renewal' ? `<p>The old contract has lapsed. Nothing carries over.${t.fresh ? ` There is one new demand: ${TERMS[t.fresh].name}.` : ''}</p>` : '') +
@@ -1128,7 +1213,7 @@ function sign(){
     `<button data-act="close" type="button">Back to the table</button>`);
 }
 function showContract(){
-  showPanel(`<h2>Felt Local 52 contract</h2><p>${dealsLeft > 0 ? `Covers ${dealsLeft} more deal${dealsLeft === 1 ? '' : 's'} after this one.` : 'Up for renewal at the next deal.'}</p>${clauseList()}` +
+  showPanel(`<h2>Felt ${LOCAL()} contract</h2><p>${dealsLeft > 0 ? `Covers ${dealsLeft} more deal${dealsLeft === 1 ? '' : 's'} after this one.` : 'Up for renewal at the next deal.'}</p>${clauseList()}` +
     `<p class="fine">Goodwill goes down by 1 for a deal with overtime, a broken promise, insisting, or a walkout.</p>` +
     how() + `<button data-act="close" type="button">Close</button><button data-act="reset" class="alt" type="button">Start a whole new run</button>`);
 }
@@ -1141,27 +1226,23 @@ window.addEventListener('pointerup', () => { if (tscroll && tscroll.moved) talks
 talks.addEventListener('click', e => {
   if (performance.now() < talksNoClick) return;
   const b = e.target.closest('button'); if (!b || b.disabled) return;
-  if (b.dataset.term && talk){ const k = b.dataset.term; talk.sel.has(k) ? talk.sel.delete(k) : talk.sel.add(k); return renderTalk(); }
+  if (b.dataset.term && talk){ const k = b.dataset.term; if (k === talk.fixed) return; talk.sel.has(k) ? talk.sel.delete(k) : talk.sel.add(k); return renderTalk(); }
   const a = b.dataset.act;
   if (a === 'close'){ talks.hidden = true; }
   else if (a === 'demands') openTalks(mode === 'scab' ? 'reopen' : 'strike');
   else if (a === 'sign') sign();
   else if (a === 'walk'){
-    talk = null; mode = 'scab'; shift = false; G = Math.max(0, G - 1); save(); if (!table.classList.contains('strike')) picket(); hud();
+    talk = null; mode = 'scab'; shift = false; run.walks++; G = Math.max(0, G - 1); save(); if (!table.classList.contains('strike')) picket(); hud();
     showPanel(`<h2>Talks have broken down</h2><p>The crew stays on the line. Goodwill −1. Move the cards yourself, slowly, or reopen talks with a less patient crew.</p>` +
       `<button data-act="close" type="button">Move them myself</button><button data-act="demands" type="button">Reopen talks</button>`);
   }
-  else if (a === 'promise'){ brief.on = true; E += 8; hud(); talks.hidden = true; say(steward, 'Noted. 8 more energy.', 2600); }
+  else if (a === 'promise'){ brief.on = true; run.promised++; E += 8; hud(); talks.hidden = true; say(steward, 'Noted. 8 more energy.', 2600); }
   else if (a === 'gpay'){ clearGrudge(); spend(8, W/2, H*.4, 'fee'); say(steward, 'Paid. Tap the card again.', 2600); }
   else if (a === 'ginsist'){ clearGrudge(); goodwill(-1); say(steward, 'Minuted. Tap it again.', 2600); }
+  else if (a === 'nextlocal'){ resetRun(true); enqueue({type: 'new'}); }
   else if (a === 'reset'){
     if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'Tap again: this erases the union, the contract and goodwill'; return; }
-    union = false; G = 3; clauses = {}; known = []; knownAt = -1; nCon = 0; mode = 'work'; E = PRE_E; OT = 0; otLog = []; lastUp = 0; lastCall = false; warnIdx = 0; fastLeft = 0; shift = false; clearGrudge(); brief = null;
-    stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
-    Object.keys(seen).forEach(k => delete seen[k]); Object.keys(gripeN).forEach(k => delete gripeN[k]); hintN = 0; hintPaid = 0; dry = 0;
-    crew.forEach(p => { p.tally = newTally(); p.load = 0; });
-    try { localStorage.removeItem('felt-union'); } catch (e) {}
-    table.classList.remove('strike'); hud(); measure(); crew.forEach(p => goHome(p)); talks.hidden = true;
+    resetRun(false); enqueue({type: 'new'});
   }
 });
 $('clink').addEventListener('click', showContract);
@@ -1262,6 +1343,7 @@ $('undo').addEventListener('click', () => enqueue({type: 'undo'}));
    Under a contract it is consulting, and consulting is billed. */
 const HINT_PRE = ['Hints are not in the job description.', 'We carry. We do not advise.', 'That one. This is not a precedent.', 'Carrier. Not consultant.', 'Advice again. Noted.'];
 const HINT_POST = ['Consulting is outside the contract. That was 2.', 'Advice is billed. That was 2.', 'Billed.'];
+const HINT_OWNER = ['That one. This is not carrying.', 'That one. I do not mind.', 'There. The others mind.', 'That one. Noted, by them.'];
 let hintN = 0, hintPaid = 0;
 function bestHint(noStock){
   const w = top(waste);
@@ -1280,15 +1362,19 @@ $('hint').addEventListener('click', () => {
   if (mode === 'strike' || mode === 'talks') return say(steward, 'No contract, no advice.', 2400);
   if (mode === 'scab') return say(steward, 'You are on your own.', 2400);
   if (seen.stuck) return say(floorCrew()[0] || steward, 'Nothing fits. Try a new deal.', 3000);
-  const h = bestHint(), who = crew.filter(p => p.role === 'bench' && FRESH.includes(p.act))[0] || floorCrew()[0];
+  const ho = owner('hint'), h = bestHint(), who = ho || crew.filter(p => p.role === 'bench' && FRESH.includes(p.act))[0] || floorCrew()[0];
   if (!h) return say(who, 'Nothing moves. That advice was free.', 2600);
   if (h.c){ h.c.el.classList.add('hinted'); setTimeout(() => h.c.el.classList.remove('hinted'), 1700); }
   else { const sl = document.querySelector('.slot.stock'); sl.classList.add('hot'); setTimeout(() => sl.classList.remove('hot'), 1700); }
   if (h.d){ const el = document.createElement('div'), at = landing(h.d); el.className = 'hint hot'; place(el, at.x, at.y); table.appendChild(el); setTimeout(() => el.remove(), 1700); }
   if (freeRide) return;
   stats.hints = (stats.hints || 0) + 1; if (union) hintPaid++; else hintN++;
-  spend(union ? 2 : 1, W*.45, 4, 'hint'); sweat(who, union ? 2 : 1);
-  if (mode === 'work' && !(OT > 0 && !union)) say(who, union ? HINT_POST[Math.min(hintPaid - 1, 2)] : HINT_PRE[(hintN - 1) % HINT_PRE.length], 2800);
+  const cost = union ? P().hint : 1;
+  spend(cost, W*.45, 4, 'hint'); sweat(who, union ? 2 : 1); didHabit(ho);
+  if (mode !== 'work' || (OT > 0 && !union)) return;
+  if (union){ if (clauses.consult && !(seen.cl || (seen.cl = {})).hint){ seen.cl.hint = 1; say(who, 'Consulting clause. That hint was 4.', 3200); } else say(who, HINT_POST[Math.min(hintPaid - 1, 2)].replace('2', cost), 2800); }
+  else if (hintN === 1 && ho){ const other = floorCrew().find(p => p !== ho) || steward; if (!crew.some(q => q.known)) tag(ho, true); say(other, `Not my job. Ask ${ho.name}.`, 3000); }
+  else say(who, ho ? HINT_OWNER[(hintN - 2) % HINT_OWNER.length] : HINT_PRE[(hintN - 1) % HINT_PRE.length], 2800);
 });
 let newArmed = 0;
 $('new').addEventListener('click', () => {
@@ -1312,7 +1398,7 @@ $('pace').addEventListener('click', () => {
       say(n === 1 ? crew[2] : crew[4], n === 1 ? 'Faster. Noted.' : n === 2 ? "Twice. It's in the log." : 'My knees are felt.', 2400);
     }
     spend(3, W*.6, 4, 'fast');        // asking costs 3 whether or not you can see it
-    floorCrew().forEach(p => sweat(p, 2));
+    const fo = owner('fast'); didHabit(fo); (fo ? [fo, ...floorCrew()] : floorCrew()).forEach(p => sweat(p, 2));
     if (mode === 'work') fastLeft = 8;
   }
   hud();
@@ -1325,12 +1411,13 @@ if (mode === 'strike' || mode === 'scab') table.classList.add('strike');
 hud(); measure();
 crew.forEach(p => { setP(p, p.home.x, p.home.y); p.tx = p.x; p.ty = p.y; });
 enqueue({type: 'new'});
-if (mode === 'strike') showPanel(`<h2>Felt Local 52 is still on strike</h2><p>Nothing moves until there is a contract.</p><button data-act="demands" type="button">Hear their demands</button>`);
+if (mode === 'strike') showPanel(`<h2>Felt ${LOCAL()} is still on strike</h2><p>Nothing moves until there is a contract.</p><button data-act="demands" type="button">Hear their demands</button>`);
 
 // handle for the smoke test and playtest tooling
 window.__felt = {piles, cards, stock, waste, founds, tabs, crew, enqueue, findDest, canFound, canTab, won, tire, P,
   idle: () => !running && !queue.length, relayout: () => applyLayout(false, true),
-  state: () => ({moves, gameOver, mode, union, G, E, OT, clauses, dealsLeft, breaksLeft, fastLeft, stats, grudge: grudge && grudge.id, brief, talk: talk && {T: talk.T, rows: talk.rows, offers: talk.offers}, nCon, known,
+  state: () => ({moves, gameOver, mode, union, G, E, OT, clauses, dealsLeft, breaksLeft, fastLeft, stats, grudge: grudge && grudge.id, brief, talk: talk && {T: talk.T, rows: talk.rows, offers: talk.offers, fixed: talk.fixed}, nCon, known, runDeal, run, local: meta.local,
+    steward: steward.name, cast: crew.map(p => ({name: p.name, habit: p.habit, known: !!p.known, did: p.did})),
     otLog, crew: crew.map(p => ({role: p.role, act: p.act, load: p.load, x: Math.round(p.x), y: Math.round(p.y)}))}),
   setFast: v => { fast = v; }, setE: v => { E = v; hud(); }, setG: v => { G = v; hud(); }};
 })();
