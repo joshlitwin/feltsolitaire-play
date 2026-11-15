@@ -424,15 +424,16 @@ const BRIEFS = {
 let mode = 'work';             // 'work' | 'strike' (nothing moves) | 'scab' (you move the cards alone) | 'talks' (renewal, before play)
 let union = false, G = 3, clauses = {}, dealsLeft = 0;
 let E = PRE_E, OT = 0, lastUp = 0, lastCall = false, breaksLeft = 0, fastLeft = 0, sinceNap = 0, napping = false, warnIdx = 0;
-let stats = {carries: 0, royals: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+let stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
 const seen = {};
 let royalMoves = 0, struck = false;
+let known = [], knownAt = -1, nCon = 0;   // demands tabled so far; the contract count they were last added at; contracts signed
 let shift = false, sweepsThisDeal = 0, grudge = null, brief = null, talk = null;
 try {
   const sv = JSON.parse(localStorage.getItem('felt-union') || 'null');
-  if (sv && sv.union){ union = true; G = sv.G; clauses = sv.clauses || {}; dealsLeft = sv.dealsLeft || 0; mode = sv.mode === 'talks' ? 'work' : (sv.mode || 'work'); if (sv.mode === 'talks') dealsLeft = 0; }
+  if (sv && sv.union){ union = true; G = sv.G; clauses = sv.clauses || {}; known = sv.known || []; knownAt = sv.knownAt == null ? -1 : sv.knownAt; nCon = sv.nCon || 0; dealsLeft = sv.dealsLeft || 0; mode = sv.mode === 'talks' ? 'work' : (sv.mode || 'work'); if (sv.mode === 'talks') dealsLeft = 0; }
 } catch (e) {}
-function save(){ try { localStorage.setItem('felt-union', JSON.stringify({union, G, clauses, dealsLeft, mode})); } catch (e) {} }
+function save(){ try { localStorage.setItem('felt-union', JSON.stringify({union, G, clauses, dealsLeft, mode, known, knownAt, nCon})); } catch (e) {} }
 function P(){
   return {
     royal: union && clauses.royalty ? 3 : 2, undo: clauses.rework ? 4 : 2, sweep: clauses.stock ? 8 : 4,
@@ -703,7 +704,8 @@ function hud(){
   $('clink').hidden = !union;
   $('title').textContent = union ? 'Felt Local 52' : 'Felt Solitaire';
   $('app').classList.toggle('u', union); $('new').textContent = union ? 'New' : 'New deal';
-  $('gwblk').style.display = $('break').style.display = union ? '' : 'none';
+  $('break').style.display = union ? '' : 'none';
+  $('gwblk').style.display = union && (nCon >= 2 || mode === 'talks') ? '' : 'none';
   $('ebar').firstChild.style.width = clamp(100*E/p.eMax, 0, 100) + '%';
   $('ebar').classList.toggle('low', E < p.eMax*.25);
   if (!union){
@@ -814,7 +816,7 @@ async function doMove(run, src, dest){
   const royal = isRoyal(run[0]), x0 = run[0].x + cw*.3, y0 = run[0].y - 4;
   src.cards.splice(src.cards.length - run.length, run.length); dest.cards.push(...run);
   moves++;
-  if (!freeRide){ stats.carries++; if (royal) stats.royals++; }
+  if (!freeRide){ stats.carries++; if (royal) stats.royals++; if (run.length > 1) stats.runs++; }
   const under = src.type === 'tab' && src.cards.length && !top(src).up ? top(src) : null;
   if (under) under.up = true;
   computeLayout();
@@ -896,9 +898,10 @@ async function afterMove(){
 }
 function endShift(wonIt){
   if (!shift) return ''; shift = false;
-  if (OT > 0){ goodwill(-1); return 'Overtime was worked. Goodwill −1.'; }
-  if (wonIt && struck) return 'Settled by strike. No change in goodwill.';
-  if (wonIt){ goodwill(1); return 'No overtime. Goodwill +1.'; }
+  const seenG = nCon >= 2;
+  if (OT > 0){ goodwill(-1); return seenG ? 'Overtime was worked. Goodwill −1.' : 'Overtime was worked.'; }
+  if (wonIt && struck) return seenG ? 'Settled by strike. No change in goodwill.' : '';
+  if (wonIt){ goodwill(1); return seenG ? 'No overtime. Goodwill +1.' : 'No overtime.'; }
   return '';
 }
 function celebrate(){
@@ -941,7 +944,7 @@ async function newGame(){
   cards.forEach(c => { c.el.style.transitionDelay = ''; });
   applyLayout(false, true);
   if (union && mode === 'work'){ if (dealsLeft <= 0) openTalks('renewal'); else startShift(true); }
-  if (left) say(crew[3], 'Overtime logged. Goodwill −1.', 3000);
+  if (left) say(crew[3], left === 'Overtime was worked.' ? 'Overtime logged.' : 'Overtime logged. Goodwill −1.', 3000);
   if (mode === 'work') {}
   else if (mode === 'talks'){ if (talk) renderTalk(); else openTalks('renewal'); }
 }
@@ -960,9 +963,9 @@ function startShift(withBriefing){
   const p = P();
   dealsLeft--; shift = true; struck = false; royalMoves = 0; E = p.eMax; OT = 0; otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; breaksLeft = p.breaks; sweepsThisDeal = 0; sinceNap = 0; save();
   cards.forEach(c => c.el.classList.remove('grudge'));
-  grudge = rand(cards.filter(isRoyal)); grudge.el.classList.add('grudge');
+  grudge = nCon >= 2 ? rand(cards.filter(isRoyal)) : null; if (grudge) grudge.el.classList.add('grudge');
   brief = null; hud();
-  if (!withBriefing) return;
+  if (!withBriefing || nCon < 2) return;
   brief = {key: rand(Object.keys(BRIEFS)), on: false, broken: false};
   showPanel(`<h2>Before this deal</h2>` +
     `<p>Deal ${p.deals - dealsLeft} of ${p.deals} on this contract · Energy ${p.eMax}</p>` +
@@ -1011,24 +1014,51 @@ async function startStrike(){
     (first ? `<p>Every move cost them energy. The bench was the gauge.</p>` : '') +
     `<p>Nothing moves until you agree a contract.</p><button data-act="demands" type="button">Hear their demands</button>`);
 }
+const DEMANDS = ['rest', 'royalty', 'stock', 'rework', 'staffing', 'pace'];
+// how much each demand has to do with what the player actually asked for, and the line that says so
+function grievance(k){
+  const st = stats, pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  return {
+    rest:     [st.carries/10,       `${st.carries} ${st.carries === 1 ? 'carry' : 'carries'} and ${st.breaks ? pl(st.breaks, 'break') : 'no break'}.`],
+    royalty:  [st.royals,           `You had ${pl(st.royals, 'face card')} carried.`],
+    stock:    [st.sweeps*4,         `You turned the waste pile over ${st.sweeps === 1 ? 'once' : st.sweeps + ' times'}.`],
+    rework:   [st.undos*2,          `You pressed Undo ${st.undos === 1 ? 'once' : st.undos + ' times'}.`],
+    staffing: [st.runs,             `You had ${pl(st.runs, 'stack')} carried.`],
+    pace:     [st.fast*3,           `You pressed Faster ${st.fast === 1 ? 'once' : st.fast + ' times'}.`],
+  }[k];
+}
+/* The first contract is three demands, taken from what the player leaned on, and they sign for any two.
+   Each later contract tables one more demand, and from the second one the player can make offers and goodwill counts. */
 function openTalks(kind){
-  const want = Object.keys(TERMS).filter(k => !TERMS[k].offer), give = Object.keys(TERMS).filter(k => TERMS[k].offer);
-  const rows = want, offers = give;
+  const byScore = ks => ks.slice().sort((x, y) => grievance(y)[0] - grievance(x)[0]);    // stable: ties keep DEMANDS order
+  let fresh = null;
+  if (!known.length){ known = byScore(DEMANDS).slice(0, 3); knownAt = nCon; }
+  else if (knownAt !== nCon && known.length < DEMANDS.length){ fresh = byScore(DEMANDS.filter(k => !known.includes(k)))[0]; known.push(fresh); knownAt = nCon; }
+  const first = nCon === 0, rows = DEMANDS.filter(k => known.includes(k)), offers = first ? [] : Object.keys(TERMS).filter(k => TERMS[k].offer);
+  const pt = k => first ? 1 : TERMS[k].pts, max = [...rows, ...offers].reduce((n, k) => n + pt(k), 0);
+  const T = first ? 2 : clamp(8 - G - (DEMANDS.length - rows.length), 2, max - 1);
+  const why = {}; rows.forEach(k => { const g = grievance(k); if (g[0] > 0) why[k] = g[1]; });
   if (kind === 'renewal') mode = 'talks';
-  talk = {kind, rows, offers, sel: new Set(), T: 8 - G + (kind === 'reopen' ? 1 : 0)};
+  talk = {kind, rows, offers, first, fresh, why, sel: new Set(), T: Math.min(max, T + (kind === 'reopen' ? 1 : 0))};
   save(); hud(); renderTalk();
 }
 function renderTalk(){
-  const t = talk, pts = [...t.sel].reduce((s, k) => s + TERMS[k].pts, 0), ok = pts >= t.T;
+  const t = talk, pt = k => t.first ? 1 : TERMS[k].pts, pts = [...t.sel].reduce((n, k) => n + pt(k), 0), ok = pts >= t.T;
   const row = k => { const c = TERMS[k], on = t.sel.has(k);
-    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${on ? '☑' : '☐'} ${c.name}<em>+${c.pts}</em></span>` +
-      `<span class="te">${c.fx}</span>` + (c.say ? `<span class="tq">“${c.say}”</span>` : '') + `</button>`; };
+    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${on ? '☑' : '☐'} ${c.name}${k === t.fresh ? ' · new' : ''}${t.first ? '' : `<em>+${pt(k)}</em>`}</span>` +
+      `<span class="te">${c.fx}</span>` + (t.first && t.why[k] ? `<span class="tq">${t.why[k]}</span>` : c.say ? `<span class="tq">“${c.say}”</span>` : '') + `</button>`; };
+  const left = t.T - pts;
+  if (t.first) return showPanel(`<h2>Contract talks</h2>` +
+    `<p>Three demands. Agree to ${t.T === 2 ? 'any two' : 'all three'} and the crew goes back to work.${t.kind === 'reopen' ? ' Walking away cost you the choice.' : ''}</p>` +
+    t.rows.map(row).join('') +
+    `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (agree to ${left} more)`}</button>` +
+    `<button data-act="walk" class="alt" type="button">Walk away from the table</button>`);
   showPanel(`<h2>${t.kind === 'renewal' ? 'The contract is up for renewal' : 'Contract talks'}</h2>` +
-    (t.kind === 'renewal' ? `<p>The old contract has lapsed. Nothing carries over.</p>` : '') +
+    (t.kind === 'renewal' ? `<p>The old contract has lapsed. Nothing carries over.${t.fresh ? ` There is one new demand: ${TERMS[t.fresh].name}.` : ''}</p>` : '') +
     `<p>Each thing you agree to is worth points to them. They sign at <b>${t.T}</b>. You have <b>${pts}</b>.</p>` +
-    `<p class="fine">Goodwill is how the crew rates you: ${G} of 5. The lower it is, the more points they want.${t.kind === 'reopen' ? ' Walking away cost you one more.' : ''}</p>` +
+    `<p class="fine">${nCon < 2 ? 'The crew has been rating you. ' : ''}Goodwill is ${G} of 5. A deal won with no overtime raises it; overtime and walkouts lower it. The lower it is, the more points they want.${t.kind === 'reopen' ? ' Walking away cost you one more.' : ''}</p>` +
     `<p class="sec">Their demands</p>${t.rows.map(row).join('')}<p class="sec">You could also offer</p>${t.offers.map(row).join('')}` +
-    `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (${t.T - pts} more needed)`}</button>` +
+    `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (${left} more needed)`}</button>` +
     `<button data-act="walk" class="alt" type="button">Walk away from the table</button>`);
 }
 function clauseList(){
@@ -1042,13 +1072,13 @@ function sign(){
   const t = talk; talk = null;
   const fromStrike = mode !== 'talks';
   clauses = {}; t.sel.forEach(k => { clauses[k] = true; });
-  mode = 'work'; dealsLeft = P().deals; fastLeft = 0; stats = {carries: 0, royals: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+  nCon++; mode = 'work'; dealsLeft = P().deals; fastLeft = 0; stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
   table.classList.remove('strike'); measure(); crew.forEach(p => goHome(p));
   otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; seen.cl = {};
   if (fromStrike){ shift = true; E = Math.min(P().eMax, 25); OT = 0; breaksLeft = P().breaks; } else startShift(false);
   save(); hud();
   showPanel(`<h2>Contract ratified</h2><p>From now on every card you move costs the crew energy. No energy means overtime. Too much overtime and they walk again.</p><p>Six votes for, none against. ${fromStrike ? `It covers the rest of this deal and the next ${P().deals}.` : `It covers this deal and the next ${P().deals - 1}.`}</p>${clauseList()}` +
-    (fromStrike ? `<p>The crew comes back to this deal with ${Math.round(E)} energy.</p>` : `<p>Nobody is carrying the ${cardName(grudge)} today. It is marked ✕.</p>`) +
+    (fromStrike ? `<p>The crew comes back to this deal with ${Math.round(E)} energy.</p>` : (grudge ? `<p>New this contract: one face card a deal is marked ✕ and nobody carries it unless you pay. Today it is the ${cardName(grudge)}.</p>` : '')) +
     `<button data-act="close" type="button">Back to the table</button>`);
 }
 function showContract(){
@@ -1073,8 +1103,8 @@ talks.addEventListener('click', e => {
   else if (a === 'ginsist'){ clearGrudge(); goodwill(-1); say(steward, 'Minuted. Tap it again.', 2600); }
   else if (a === 'reset'){
     if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'Tap again to dissolve the union and start over'; return; }
-    union = false; G = 3; clauses = {}; mode = 'work'; E = PRE_E; OT = 0; otLog = []; lastUp = 0; lastCall = false; warnIdx = 0; fastLeft = 0; shift = false; clearGrudge(); brief = null;
-    stats = {carries: 0, royals: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+    union = false; G = 3; clauses = {}; known = []; knownAt = -1; nCon = 0; mode = 'work'; E = PRE_E; OT = 0; otLog = []; lastUp = 0; lastCall = false; warnIdx = 0; fastLeft = 0; shift = false; clearGrudge(); brief = null;
+    stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
     try { localStorage.removeItem('felt-union'); } catch (e) {}
     table.classList.remove('strike'); hud(); measure(); crew.forEach(p => goHome(p)); talks.hidden = true;
   }
@@ -1202,7 +1232,7 @@ if (mode === 'strike') showPanel(`<h2>Felt Local 52 is still on strike</h2><p>No
 // handle for the smoke test and playtest tooling
 window.__felt = {piles, cards, stock, waste, founds, tabs, crew, enqueue, findDest, canFound, canTab, won, tire, P,
   idle: () => !running && !queue.length, relayout: () => applyLayout(false, true),
-  state: () => ({moves, gameOver, mode, union, G, E, OT, clauses, dealsLeft, breaksLeft, fastLeft, stats, grudge: grudge && grudge.id, brief, talk: talk && {T: talk.T, rows: talk.rows, offers: talk.offers},
+  state: () => ({moves, gameOver, mode, union, G, E, OT, clauses, dealsLeft, breaksLeft, fastLeft, stats, grudge: grudge && grudge.id, brief, talk: talk && {T: talk.T, rows: talk.rows, offers: talk.offers}, nCon, known,
     otLog, crew: crew.map(p => ({role: p.role, act: p.act, load: p.load, x: Math.round(p.x), y: Math.round(p.y)}))}),
   setFast: v => { fast = v; }, setE: v => { E = v; hud(); }, setG: v => { G = v; hud(); }};
 })();
