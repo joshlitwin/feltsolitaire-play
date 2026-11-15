@@ -179,7 +179,9 @@
     display:flex;align-items:center;justify-content:center;font-size:calc(var(--cw)*.2);font-weight:800;color:#fff;background:#6f4fa3;outline:1.5px dashed rgba(255,255,255,.8);outline-offset:-3px}
   #hud{flex:none;display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--felt),#5f3d2b;background-size:150px;color:#f6e6c8;font-size:11px;font-weight:800;position:relative;z-index:5}
   #hud{min-height:46px}
-  #otlab{color:#f3b3a2}
+  #otlab{color:#f3b3a2;white-space:normal;line-height:1.15}
+  #otblk{flex:1 1 0;min-width:0}
+  #break{flex:none}
   #hud .hb{display:flex;flex-direction:column;gap:3px;white-space:nowrap}
   #hud .hb.off{opacity:.4}
   #ebar{display:block;width:84px;height:9px;border-radius:5px;background:rgba(0,0,0,.35);overflow:hidden}
@@ -207,6 +209,8 @@
   #talks button.alt{background-color:#e2806a}
   #talks .lh{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a6a52;border-bottom:1.5px dashed rgba(196,61,53,.45);padding-bottom:6px;margin:0 0 8px}
   #talks .sig{font-style:italic;margin-top:10px}
+  #talks.more button[data-act="sign"]::before{content:"↓ more below";position:absolute;right:8px;top:-22px;font-size:11px;font-weight:800;color:#fffaf0;background:rgba(60,40,25,.85);padding:2px 8px;border-radius:9px}
+  #new.nudge{animation:nudge 1.3s ease-in-out infinite}
   #talks button[data-act="sign"]{position:sticky;bottom:0;z-index:2}
   #talks button[data-act="sign"][disabled]{opacity:1;background-color:#cfc4ad;color:#7a6f5f}
   #talks button.term{background-color:#efe2c4;padding:6px 10px;margin-bottom:6px;outline-color:rgba(70,40,10,.25)}
@@ -275,7 +279,7 @@
 
 <div id="app">
   <header id="bar">
-    <div id="brand"><h1 id="title">Felt Solitaire</h1><div id="sub"><span id="moves" aria-live="polite">0 moves</span><button id="clink" class="link" type="button" hidden>contract</button></div></div>
+    <div id="brand"><h1 id="title">Felt Solitaire</h1><div id="sub"><span id="moves" aria-live="polite">0 moves</span><button id="clink" class="link" type="button" hidden>terms</button></div></div>
     <button id="undo" type="button">Undo</button>
     <button id="hint" type="button">Hint</button>
     <button id="pace" type="button" title="The crew carries at double speed for 8 moves">Faster »</button>
@@ -283,7 +287,7 @@
   </header>
   <div id="hud">
     <div class="hb" id="eblk"><span id="elab">Crew</span><span id="ebar"><i></i></span></div>
-    <div class="hb" id="gwblk"><span>Goodwill</span><span id="gw" class="dots"></span></div>
+    <div class="hb" id="gwblk"><span id="gwlab">Goodwill</span><span id="gw" class="dots"></span></div>
     <div class="hb" id="otblk"><span id="otlab">Overtime</span><span id="ot" class="dots sq"></span></div>
     <button id="break" type="button">Break</button>
   </div>
@@ -390,7 +394,7 @@ const TERMS = {
   rework:   {pts: 1, name: 'Rework',   say: 'We carried it there. Then you had us carry it back.', fx: 'Undo costs 4 energy, not 2.'},
   rest:     {pts: 1, name: 'Rest',     say: 'Felt that is not rested starts to pill.',            fx: 'A 3-second nap after every 12 cards carried.'},
   stock:    {pts: 1, name: 'Stock',    say: 'The waste pile is up to 24 cards. We counted.',      fx: 'Turning the waste pile back over costs 8 energy, not 4.'},
-  royalty:  {pts: 2, name: 'Royalty',  say: 'A King has never once helped carry a King.',         fx: 'Face cards cost 3 energy, not 2, and need three carriers.'},
+  royalty:  {pts: 2, name: 'Royalty',  say: 'A King has never once helped carry a King.',         fx: 'Face cards cost 3 energy, not 2, and take three of the crew to carry.'},
   staffing: {pts: 2, name: 'Staffing', say: 'A run of seven is seven cards. There are six of us.', fx: "Runs longer than 6 cards can't be carried."},
   short:    {pts: 1, name: 'Shorter contract', offer: true, fx: 'This contract covers 2 deals, not 3. Then you are back here.'},
   hazard:   {pts: 1, name: 'Overtime cap', offer: true, fx: 'They walk out at 3 overtime, not 5.'},
@@ -399,14 +403,14 @@ const TERMS = {
 /* Before the union: 37 energy empties the bench at about move 40. After that every ask goes on an overtime tab
    at its energy cost, one more of the bench stands for every 4 on the tab, and at 16 they walk (about move 57). */
 const PRE_E = 37, PRE_OT = 16;
-const FORESHADOW = [[.7, 'Is there a water station?'], [.5, 'Someone is keeping count.'], [.3, 'We are writing this down.'], [.1, 'When is the break?']];
+const FORESHADOW = [[.7, 'Is there a water station?'], [.5, 'Someone is keeping count.'], [.25, 'Nearly out of energy. After that it is overtime.'], [.1, 'When is the break?']];
 const OT_LINES = ['That one was off the clock.', 'That is overtime. Unpaid.', 'There is a meeting tonight.', 'One more and we walk.'];
 const PRE_OT_LINES = ['That one was off the clock.', 'That is overtime. Unpaid.', 'One more of us up for every few you ask.', 'All four up. Next we walk.'];
 // what the carrier says about a costly ask: the first two times, then every fourth
 const GRIPES = {face: ['Face cards weigh double.', 'Another face card. Double.'], stack: ['A stack takes two of us.', 'Two of us again.'],
   undo: ['We just put that down.', 'Carried it. Carried it back.'], sweep: ['The whole pile. Back again.', 'The whole pile again.']};
 const gripeN = {};
-const BITES = {undo: ['rework', 'Rework clause. That undo was 4.'], sweep: ['stock', 'Stock clause. That reset was 8.'], face: ['royalty', 'Royalty clause. Three carriers, 3 energy.']};
+const BITES = {undo: ['rework', 'Rework clause. That undo was 4.'], sweep: ['stock', 'Stock clause. That reset was 8.'], face: ['royalty', 'Royalty clause. Three of us, 3 energy.']};
 function gripe(kind, who){
   const bite = BITES[kind];
   if (union && mode === 'work' && bite && clauses[bite[0]] && !(seen.cl || (seen.cl = {}))[kind]){ seen.cl[kind] = 1; say(who || steward, bite[1], 3200); return; }
@@ -620,11 +624,8 @@ function refreshBench(walk){
 function tallyLine(t){
   const pl = (n, a, b) => n + ' ' + (n === 1 ? a : b);
   const c = [t.carries ? pl(t.carries, 'carry', 'carries') : '', t.turns ? pl(t.turns, 'stock turn', 'stock turns') : ''].filter(Boolean).join(', ') || 'Nothing carried';
-  if (t.undone) return `${c}. ${t.undone} undone.`;
-  if (t.fast) return `${c}. ${t.fast} at the double.`;
-  if (t.royals > 1) return `${c}. ${t.royals} were face cards.`;
-  if (t.runs > 1) return `${c}. ${t.runs} were stacks.`;
-  return `${c}. Tagging out.`;
+  const x = t.undone ? ` ${t.undone} undone.` : t.fast ? ` ${t.fast} rushed.` : t.royals > 1 ? ` ${t.royals} face cards.` : '';
+  return `Shift over: ${c}.${x}`;
 }
 // after a full shift on the floor, swap with whoever has been resting longest, if anyone is still fit to
 function relieve(){
@@ -652,7 +653,7 @@ function setSigns(){
   crew.forEach((p, i) => { p.el.querySelector('.sign').textContent = t[i]; });
 }
 function say(p, text, ms = 2000){
-  const old = p.el.querySelector('.bubble'); if (old) old.remove();
+  table.querySelectorAll('.bubble').forEach(o => o.remove());          // one voice at a time, so nothing overlaps
   const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text; p.el.appendChild(b);
   const fit = () => {
     b.style.marginLeft = '0px';
@@ -660,7 +661,7 @@ function say(p, text, ms = 2000){
     if (r.left < tr.left + 4) b.style.marginLeft = (tr.left + 4 - r.left) + 'px';
     else if (r.right > tr.right - 4) b.style.marginLeft = (tr.right - 4 - r.right) + 'px';
   };
-  fit(); setTimeout(fit, 700);                      // again once the speaker has finished walking
+  fit(); const iv = setInterval(() => { if (b.isConnected) fit(); else clearInterval(iv); }, 120);   // keep it on screen while the speaker walks
   setTimeout(() => b.remove(), ms);
 }
 function floatText(x, y, text, plus){
@@ -692,6 +693,7 @@ function spend(n, x, y, why){
     }
   } else {
     E -= n;
+    if (union && mode === 'work' && !seen.low && E < P().eMax*.25){ seen.low = 1; say(steward, breaksLeft > 0 ? 'Energy is low. Rest, or the next asks are overtime.' : 'Energy is low. At zero it is overtime.', 3600); }
     if (!union){ let line = null; while (warnIdx < FORESHADOW.length && E <= FORESHADOW[warnIdx][0]*PRE_E) line = FORESHADOW[warnIdx++][1]; if (line) say(crew.filter(p => p.role === 'bench').sort((a, c) => c.seq - a.seq)[0], line, 2600); }
   }
   hud();
@@ -705,7 +707,7 @@ function breach(key){
 const dots = (n, of) => Array.from({length: of}, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
 function hud(){
   const p = P(), working = mode === 'work';
-  $('moves').textContent = moves + (moves === 1 ? ' move' : ' moves');
+  $('moves').textContent = union && mode === 'work' ? (dealsLeft > 0 ? `${dealsLeft} deal${dealsLeft === 1 ? '' : 's'} to go` : 'Last deal') : moves + (moves === 1 ? ' move' : ' moves');
   $('undo').textContent = union && working ? `Undo −${p.undo}` : 'Undo';
   $('undo').disabled = !undoStack.length;
   $('clink').hidden = !union;
@@ -716,21 +718,27 @@ function hud(){
   $('ebar').firstChild.style.width = clamp(100*E/p.eMax, 0, 100) + '%';
   $('ebar').classList.toggle('low', E < p.eMax*.25);
   if (!union){
-    $('elab').textContent = OT > 0 ? 'Crew: spent' : 'Crew';
+    $('elab').textContent = OT > 0 ? 'Crew energy: none' : 'Crew energy';
     $('otblk').style.visibility = OT > 0 && working ? 'visible' : 'hidden';
     $('ot').innerHTML = ''; $('otlab').textContent = `Unpaid overtime · they walk in ${Math.max(1, Math.ceil(p.otMax - OT))}`;
   }
   if (union){
-    $('elab').textContent = E > p.eMax ? `Energy ${Math.round(E)}` : `Energy ${Math.max(0, Math.round(E))} of ${p.eMax}`;
+    $('elab').textContent = `Energy ${Math.max(0, Math.round(E))} of ${p.eMax + (brief && brief.on ? 8 : 0)}`;
     $('eblk').classList.toggle('off', !working);
     $('gw').innerHTML = dots(G, 5);
-    $('otblk').style.visibility = OT > 0 && working ? 'visible' : 'hidden';
-    $('ot').innerHTML = dots(OT, p.otMax); $('otlab').textContent = `Overtime ${OT} of ${p.otMax}`;
-    $('break').textContent = `Break ${breaksLeft}`;
+    $('gwlab').textContent = `Goodwill ${G} of 5`;
+    const prom = brief && brief.on && OT <= 0;
+    $('otblk').style.visibility = (OT > 0 || prom) && working ? 'visible' : 'hidden';
+    $('ot').innerHTML = prom ? '' : dots(OT, p.otMax);
+    $('otlab').textContent = !prom ? `Overtime ${OT} of ${p.otMax}` : brief.broken ? 'Promise broken' :
+      brief.key === 'noUndo' ? 'Promise: no undos' : brief.key === 'noSweep' ? 'Promise: no pile reset' : `Promise: face cards ${Math.min(royalMoves, 6)} of 6`;
+    $('break').textContent = breaksLeft > 0 ? 'Rest +12' : 'Rested';
     $('break').disabled = !working || breaksLeft <= 0 || gameOver;
   }
+  const ss = document.querySelector('.slot.stock'); if (ss) ss.textContent = union && working ? `↻ −${p.sweep}` : '↻';
   const b = $('pace'), shut = working && p.noFast;
   b.disabled = shut;
+  b.style.display = shut ? 'none' : '';
   b.textContent = !working ? 'Talks' : shut ? 'No faster' : fastLeft > 0 ? `Fast · ${fastLeft}` : union ? 'Faster −3' : 'Faster »';
   b.classList.toggle('nudge', working && !shut && fastLeft === 0 && tire() < .8);
   table.style.setProperty('--step', (.26/tire()).toFixed(2) + 's');
@@ -778,6 +786,7 @@ async function carry(run, opts = {}){
   await Promise.all(team.map((p, i) => walkTo(p, spots[i].x, spots[i].y)));
   if (opts.sweat && mode === 'work' && !freeRide) team.forEach(p => sweat(p, opts.sweat));
   if (opts.gripe) gripe(opts.gripe, team[0]);
+  if (!union && !seen.first && mode === 'work' && !opts.flip){ seen.first = 1; say(team[0], 'Every card we carry takes a little energy.', 3200); }
   const dir = run[0].tx - run[0].x;
   team.forEach(p => { p.wid++; p.el.classList.add('carry', 'walk'); p.el.classList.toggle('left', dir < -2); });
   run.forEach((c, i) => { c.el.classList.remove('settle'); c.el.classList.add('lift'); c.el.style.zIndex = 1000 + i; });
@@ -818,7 +827,17 @@ function restore(s){
   cards.forEach((c, i) => { c.up = s.ups[i]; });
   moves = s.moves;
 }
+let dry = 0;      // stock turns since a card last moved
+function unstick(){ dry = 0; seen.stuck = 0; $('new').classList.remove('nudge'); }
+function afterAction(){
+  if (mode !== 'work' || gameOver || !talks.hidden) return;
+  if (grudge && grudge.up && !seen.gr){ seen.gr = 1; say(steward, `The ${cardName(grudge)} is marked ✕. Nobody carries it today unless you pay.`, 3800); }
+  if (!seen.stuck && dry > stock.cards.length + waste.cards.length && !bestHint(true)){
+    seen.stuck = 1; $('new').classList.add('nudge'); say(floorCrew()[0] || steward, 'That is every card. Nothing fits. New deal?', 4200);
+  }
+}
 async function doMove(run, src, dest){
+  unstick();
   undoStack.push(snapshot());
   const royal = isRoyal(run[0]), x0 = run[0].x + cw*.3, y0 = run[0].y - 4;
   src.cards.splice(src.cards.length - run.length, run.length); dest.cards.push(...run);
@@ -840,6 +859,7 @@ async function doMove(run, src, dest){
 }
 async function doDraw(){
   if (!stock.cards.length && !waste.cards.length) return;
+  dry++;
   undoStack.push(snapshot()); moves++;
   let run;
   if (stock.cards.length){
@@ -928,6 +948,7 @@ function celebrate(){
 }
 async function newGame(){
   const left = union && mode === 'work' && !gameOver ? endShift(false) : '';     // walking away from a deal still counts its overtime
+  crew.forEach(p => { p.tally = newTally(); });
   gameOver = false; table.classList.remove('party'); $('win').hidden = true; talks.hidden = true;
   table.querySelectorAll('.bit').forEach(b => b.remove());
   cards.forEach(c => c.el.classList.remove('grudge')); grudge = null; brief = null;
@@ -968,17 +989,17 @@ function doUndo(){
 /* ---------------- a deal under contract ---------------- */
 function startShift(withBriefing){
   const p = P();
-  dealsLeft--; shift = true; struck = false; royalMoves = 0; E = p.eMax; OT = 0; otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; breaksLeft = p.breaks; sweepsThisDeal = 0; sinceNap = 0; save();
+  dealsLeft--; shift = true; struck = false; royalMoves = 0; E = p.eMax; OT = 0; otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; breaksLeft = p.breaks; sweepsThisDeal = 0; sinceNap = 0; seen.low = 0; seen.gr = 0; save();
   cards.forEach(c => c.el.classList.remove('grudge'));
   grudge = nCon >= 2 ? rand(cards.filter(isRoyal)) : null; if (grudge) grudge.el.classList.add('grudge');
   brief = null; hud();
   if (!withBriefing || nCon < 2) return;
   brief = {key: rand(Object.keys(BRIEFS)), on: false, broken: false};
-  showPanel(`<h2>Before this deal</h2>` +
-    `<p>Deal ${p.deals - dealsLeft} of ${p.deals} on this contract · Energy ${p.eMax}</p>` +
-    `<p>Not carried today: the ${cardName(grudge)}, marked ✕. Moving it costs 8 energy or 1 goodwill.</p>` +
-    `<p>Offer: +8 energy if you promise that ${BRIEFS[brief.key]}. Break it: −1 goodwill.</p>` +
-    `<button data-act="promise" type="button">Promise: +8 energy</button><button data-act="close" type="button">No promise</button>`);
+  showPanel(`<h2>Deal ${p.deals - dealsLeft} of ${p.deals} on this contract</h2>` +
+    `<p>The crew starts this deal with ${p.eMax} energy.</p>` +
+    `<p><b>They will start with 8 more</b> if you promise that ${BRIEFS[brief.key]}.</p>` +
+    `<p class="fine">Break the promise and you lose 1 goodwill.</p>` +
+    `<button data-act="promise" type="button">Promise (+8 energy)</button><button data-act="close" type="button">No thanks</button>`);
 }
 function grudgePanel(){
   showPanel(`<h2>The crew won't carry the ${cardName(grudge)}</h2><p>A standing objection. Today only.</p>` +
@@ -990,7 +1011,8 @@ function clearGrudge(){ if (grudge) grudge.el.classList.remove('grudge'); grudge
 
 /* ---------------- the walkout and the talks ---------------- */
 const talks = $('talks');
-function showPanel(html){ const y = talks.scrollTop; talks.innerHTML = html; talks.hidden = false; talks.scrollTop = y; }
+function moreBelow(){ talks.classList.toggle('more', talks.scrollHeight - talks.scrollTop - talks.clientHeight > 14); }
+function showPanel(html){ const y = talks.scrollTop; talks.innerHTML = html; talks.hidden = false; talks.scrollTop = y; moreBelow(); }
 function callStrike(){
   if (mode !== 'work') return;
   clearQueue(); queue.push({type: 'strike'}); pump();
@@ -1066,21 +1088,21 @@ function openTalks(kind){
 function renderTalk(){
   const t = talk, pt = k => t.first ? 1 : TERMS[k].pts, pts = [...t.sel].reduce((n, k) => n + pt(k), 0), ok = pts >= t.T;
   const row = k => { const c = TERMS[k], on = t.sel.has(k);
-    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${on ? '☑' : '☐'} ${c.name}${k === t.fresh ? ' · new' : ''}${t.first ? '' : `<em>+${pt(k)}</em>`}</span>` +
+    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${on ? '☑' : '☐'} ${c.name}${k === t.fresh ? ' · new' : ''}${t.first ? '' : `<em>${pt(k)} pt${pt(k) === 1 ? '' : 's'}</em>`}</span>` +
       `<span class="te">${c.fx}</span>` + (t.first && t.why[k] ? `<span class="tq">${t.why[k]}</span>` : c.say ? `<span class="tq">“${c.say}”</span>` : '') + `</button>`; };
   const left = t.T - pts;
   if (t.first) return showPanel(`<h2>Contract talks</h2>` +
     `<p>Three demands. Agree to ${t.T === 2 ? 'any two' : 'all three'} and the crew goes back to work.${t.kind === 'reopen' ? ' Walking away cost you the choice.' : ''}</p>` +
     t.rows.map(row).join('') +
     `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (agree to ${left} more)`}</button>` +
-    `<button data-act="walk" class="alt" type="button">Walk away from the table</button>`);
+    `<button data-act="walk" class="alt" type="button">Refuse, and move the cards yourself</button>`);
   showPanel(`<h2>${t.kind === 'renewal' ? 'The contract is up for renewal' : 'Contract talks'}</h2>` +
     (t.kind === 'renewal' ? `<p>The old contract has lapsed. Nothing carries over.${t.fresh ? ` There is one new demand: ${TERMS[t.fresh].name}.` : ''}</p>` : '') +
     `<p>Each thing you agree to is worth points to them. They sign at <b>${t.T}</b>. You have <b>${pts}</b>.</p>` +
     `<p class="fine">${nCon < 2 ? 'The crew has been rating you. ' : ''}Goodwill is ${G} of 5. A deal won with no overtime raises it; overtime and walkouts lower it. The lower it is, the more points they want.${t.kind === 'reopen' ? ' Walking away cost you one more.' : ''}</p>` +
-    `<p class="sec">Their demands</p>${t.rows.map(row).join('')}<p class="sec">You could also offer</p>${t.offers.map(row).join('')}` +
+    `<p class="sec">What they want (each makes your deals harder)</p>${t.rows.map(row).join('')}<p class="sec">What you could give instead</p>${t.offers.map(row).join('')}` +
     `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (${left} more needed)`}</button>` +
-    `<button data-act="walk" class="alt" type="button">Walk away from the table</button>`);
+    `<button data-act="walk" class="alt" type="button">Refuse, and move the cards yourself</button>`);
 }
 function clauseList(){
   const ks = Object.keys(clauses);
@@ -1098,16 +1120,23 @@ function sign(){
   otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; seen.cl = {};
   if (fromStrike){ shift = true; E = Math.min(P().eMax, 25); OT = 0; breaksLeft = P().breaks; } else startShift(false);
   save(); hud();
-  showPanel(`<h2>Contract ratified</h2><p>From now on every card you move costs the crew energy. No energy means overtime. Too much overtime and they walk again.</p><p>Six votes for, none against. ${fromStrike ? `It covers the rest of this deal and the next ${P().deals}.` : `It covers this deal and the next ${P().deals - 1}.`}</p>${clauseList()}` +
+  showPanel(`<h2>Contract ratified</h2><p>From now on every card you move costs the crew energy, shown at the top. Rest gives 12 back, once a deal. At zero it is overtime, and too much overtime means they walk again.</p><p>Six votes for, none against. ${fromStrike ? `It covers the rest of this deal and the next ${P().deals}.` : `It covers this deal and the next ${P().deals - 1}.`}</p>${clauseList()}` +
     (fromStrike ? `<p>The crew comes back to this deal with ${Math.round(E)} energy.</p>` : (grudge ? `<p>New this contract: one face card a deal is marked ✕ and nobody carries it unless you pay. Today it is the ${cardName(grudge)}.</p>` : '')) +
     `<button data-act="close" type="button">Back to the table</button>`);
 }
 function showContract(){
   showPanel(`<h2>Felt Local 52 contract</h2><p>${dealsLeft > 0 ? `Covers ${dealsLeft} more deal${dealsLeft === 1 ? '' : 's'} after this one.` : 'Up for renewal at the next deal.'}</p>${clauseList()}` +
     `<p class="fine">Goodwill goes down by 1 for a deal with overtime, a broken promise, insisting, or a walkout.</p>` +
-    how() + `<button data-act="close" type="button">Close</button><button data-act="reset" class="alt" type="button">Dissolve the union</button>`);
+    how() + `<button data-act="close" type="button">Close</button><button data-act="reset" class="alt" type="button">Start a whole new run</button>`);
 }
+// a mouse can drag the panel to scroll it, like a finger does
+let tscroll = null, talksNoClick = 0;
+talks.addEventListener('scroll', moreBelow);
+talks.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') tscroll = {y: e.clientY, top: talks.scrollTop, moved: false}; });
+window.addEventListener('pointermove', e => { if (!tscroll) return; const d = e.clientY - tscroll.y; if (Math.abs(d) > 6) tscroll.moved = true; if (tscroll.moved) talks.scrollTop = tscroll.top - d; });
+window.addEventListener('pointerup', () => { if (tscroll && tscroll.moved) talksNoClick = performance.now() + 300; tscroll = null; });
 talks.addEventListener('click', e => {
+  if (performance.now() < talksNoClick) return;
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   if (b.dataset.term && talk){ const k = b.dataset.term; talk.sel.has(k) ? talk.sel.delete(k) : talk.sel.add(k); return renderTalk(); }
   const a = b.dataset.act;
@@ -1119,18 +1148,21 @@ talks.addEventListener('click', e => {
     showPanel(`<h2>Talks have broken down</h2><p>The crew stays on the line. Goodwill −1. Move the cards yourself, slowly, or reopen talks with a less patient crew.</p>` +
       `<button data-act="close" type="button">Move them myself</button><button data-act="demands" type="button">Reopen talks</button>`);
   }
-  else if (a === 'promise'){ brief.on = true; E += 8; hud(); talks.hidden = true; say(steward, 'Minuted.'); }
+  else if (a === 'promise'){ brief.on = true; E += 8; hud(); talks.hidden = true; say(steward, 'Noted. 8 more energy.', 2600); }
   else if (a === 'gpay'){ clearGrudge(); spend(8, W/2, H*.4, 'fee'); say(steward, 'Paid. Tap the card again.', 2600); }
   else if (a === 'ginsist'){ clearGrudge(); goodwill(-1); say(steward, 'Minuted. Tap it again.', 2600); }
   else if (a === 'reset'){
-    if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'Tap again to dissolve the union and start over'; return; }
+    if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'Tap again: this erases the union, the contract and goodwill'; return; }
     union = false; G = 3; clauses = {}; known = []; knownAt = -1; nCon = 0; mode = 'work'; E = PRE_E; OT = 0; otLog = []; lastUp = 0; lastCall = false; warnIdx = 0; fastLeft = 0; shift = false; clearGrudge(); brief = null;
     stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
+    Object.keys(seen).forEach(k => delete seen[k]); Object.keys(gripeN).forEach(k => delete gripeN[k]); hintN = 0; hintPaid = 0; dry = 0;
+    crew.forEach(p => { p.tally = newTally(); p.load = 0; });
     try { localStorage.removeItem('felt-union'); } catch (e) {}
     table.classList.remove('strike'); hud(); measure(); crew.forEach(p => goHome(p)); talks.hidden = true;
   }
 });
 $('clink').addEventListener('click', showContract);
+$('hud').addEventListener('click', e => { if (union && mode === 'work' && talks.hidden && !e.target.closest('button')) showContract(); });
 
 /* ---------------- input: taps wait their turn while the crew is busy ---------------- */
 const queue = []; let running = false;
@@ -1162,6 +1194,8 @@ async function pump(){
       }
     } catch (err){ console.error(err); applyLayout(false, true); crew.forEach(p => { p.busy = false; }); }
     if (a.mark) a.mark.remove();
+    if (a.type === 'undo' || a.type === 'new') unstick();
+    afterAction();
   }
   running = false;
 }
@@ -1226,12 +1260,13 @@ $('undo').addEventListener('click', () => enqueue({type: 'undo'}));
 const HINT_PRE = ['Hints are not in the job description.', 'We carry. We do not advise.', 'That one. This is not a precedent.', 'Carrier. Not consultant.', 'Advice again. Noted.'];
 const HINT_POST = ['Consulting is outside the contract. That was 2.', 'Advice is billed. That was 2.', 'Billed.'];
 let hintN = 0, hintPaid = 0;
-function bestHint(){
+function bestHint(noStock){
   const w = top(waste);
   for (const c of [w, ...tabs.map(top)]) if (c && c.up && founds.some(d => canFound(c, d))) return {c, d: founds.find(d => canFound(c, d))};
   for (const t of tabs){ const k = t.cards.findIndex(c => c.up); if (k <= 0) continue;
     const c = t.cards[k], d = tabs.find(d => d !== t && d.cards.length && canTab(c, d)) || tabs.find(d => d !== t && canTab(c, d)); if (d) return {c, d}; }
   if (w){ const d = tabs.find(d => d.cards.length && canTab(w, d)) || tabs.find(d => canTab(w, d)); if (d) return {c: w, d}; }
+  if (noStock) return null;
   if (stock.cards.length) return {c: top(stock)};
   if (waste.cards.length) return {slot: true};
   return null;
@@ -1241,6 +1276,7 @@ $('hint').addEventListener('click', () => {
   if (napping) return say(rand(crew), 'On break.');
   if (mode === 'strike' || mode === 'talks') return say(steward, 'No contract, no advice.', 2400);
   if (mode === 'scab') return say(steward, 'You are on your own.', 2400);
+  if (seen.stuck) return say(floorCrew()[0] || steward, 'Nothing fits. Try a new deal.', 3000);
   const h = bestHint(), who = crew.filter(p => p.role === 'bench' && FRESH.includes(p.act))[0] || floorCrew()[0];
   if (!h) return say(who, 'Nothing moves. That advice was free.', 2600);
   if (h.c){ h.c.el.classList.add('hinted'); setTimeout(() => h.c.el.classList.remove('hinted'), 1700); }
@@ -1251,7 +1287,15 @@ $('hint').addEventListener('click', () => {
   spend(union ? 2 : 1, W*.45, 4, 'hint'); sweat(who, union ? 2 : 1);
   if (mode === 'work' && !(OT > 0 && !union)) say(who, union ? HINT_POST[Math.min(hintPaid - 1, 2)] : HINT_PRE[(hintN - 1) % HINT_PRE.length], 2800);
 });
-$('new').addEventListener('click', () => enqueue({type: 'new'}));
+let newArmed = 0;
+$('new').addEventListener('click', () => {
+  const b = $('new');
+  if (!window.__feltQuickNew && mode === 'work' && !gameOver && !seen.stuck && moves >= 10 && performance.now() > newArmed){
+    newArmed = performance.now() + 2600; b.textContent = 'Sure?';
+    if (union) say(steward, 'A new deal uses up one deal of the contract.', 2600); setTimeout(() => { b.textContent = 'New'; }, 2600); return;
+  }
+  newArmed = 0; b.textContent = 'New'; enqueue({type: 'new'});
+});
 $('again').addEventListener('click', () => enqueue({type: 'new'}));
 $('break').addEventListener('click', () => enqueue({type: 'break'}));
 $('pace').addEventListener('click', () => {
