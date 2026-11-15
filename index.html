@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Felt Solitaire</title>
+<style>
+  :root{
+    --cw:50px; --ch:71px; --ph:42px; --pw:29px;
+    --cream:#f3e8d0; --red:#c43d35; --ink:#35343b; --navy:#35568a;
+    --felt:none;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:#234d33; color:var(--ink); overflow:hidden;
+    font-family:ui-rounded,"SF Pro Rounded","Arial Rounded MT Bold","Nunito","Trebuchet MS",system-ui,sans-serif;
+    -webkit-user-select:none; user-select:none; touch-action:manipulation;
+  }
+  #app{height:100vh;height:100dvh;min-height:480px;max-width:820px;margin:0 auto;display:flex;flex-direction:column}
+
+  /* ---------- top bar ---------- */
+  #bar{
+    flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px;
+    background:var(--felt),#7a4f38;background-size:150px;
+    border-bottom:2px dashed rgba(255,235,200,.45);
+    box-shadow:0 2px 0 rgba(0,0,0,.25);position:relative;z-index:5;
+  }
+  #title{
+    margin:0;font-size:16px;line-height:1.1;font-weight:800;letter-spacing:.01em;
+    background:var(--felt),var(--cream);background-size:150px;color:var(--red);
+    padding:6px 10px;border-radius:9px;transform:rotate(-2deg);
+    outline:1.5px dashed rgba(196,61,53,.6);outline-offset:-4px;
+    box-shadow:0 2px 3px rgba(0,0,0,.3);white-space:nowrap;
+  }
+  #brand{margin-right:auto;display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+  #moves{color:#f6e6c8;font-size:12px;font-weight:700;white-space:nowrap}
+  button{
+    font:inherit;font-size:13px;font-weight:800;color:#3a2a1c;border:0;cursor:pointer;
+    min-height:40px;padding:6px 11px;border-radius:10px;white-space:nowrap;flex:none;
+    background:var(--felt),#e3ad3f;background-size:150px;
+    outline:1.5px dashed rgba(70,40,10,.5);outline-offset:-4px;
+    box-shadow:0 2px 0 rgba(0,0,0,.28),0 3px 4px rgba(0,0,0,.2);
+    -webkit-tap-highlight-color:transparent;
+  }
+  button:active{transform:translateY(2px);box-shadow:0 0 0 rgba(0,0,0,.3)}
+  button:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  #pace{background-color:#7fb7d6}
+  #new{background-color:#e2806a}
+  button[disabled]{opacity:.55;cursor:default}
+  #pace.nudge{animation:nudge 1.3s ease-in-out infinite}
+  @keyframes nudge{0%,70%,100%{transform:rotate(0)}78%{transform:rotate(-5deg) scale(1.06)}86%{transform:rotate(5deg) scale(1.06)}94%{transform:rotate(-3deg)}}
+
+  /* ---------- table ---------- */
+  #table{
+    flex:1;position:relative;overflow:hidden;touch-action:none;
+    background:var(--felt),radial-gradient(ellipse at 50% 30%,#57a56c,#3a8553 60%,#2a6a40);
+    background-size:150px,auto;
+    box-shadow:inset 0 0 40px rgba(0,0,0,.25);
+  }
+  #table::before{ /* stitched hem round the cloth */
+    content:"";position:absolute;inset:4px;border:2px dashed rgba(255,255,255,.22);border-radius:10px;pointer-events:none;
+  }
+  #bench{
+    position:absolute;left:0;right:0;bottom:0;
+    background:var(--felt),#8c5b3c;background-size:150px;
+    border-top:2px dashed rgba(255,235,200,.5);box-shadow:0 -2px 0 rgba(0,0,0,.18);
+  }
+  .slot{
+    position:absolute;left:0;top:0;width:var(--cw);height:var(--ch);
+    border-radius:calc(var(--cw)*.12);background:rgba(0,0,0,.13);
+    border:calc(var(--cw)*.03) dashed rgba(255,255,255,.38);
+    display:flex;align-items:center;justify-content:center;
+    color:rgba(255,255,255,.4);font-weight:800;font-size:calc(var(--cw)*.5);
+  }
+  .slot.stock{cursor:pointer}
+
+  /* ---------- cards ---------- */
+  .card{position:absolute;left:0;top:0;width:var(--cw);height:var(--ch);will-change:transform;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .card.settle{transition:transform .24s cubic-bezier(.3,.9,.4,1)}
+  .ci{
+    position:absolute;inset:0;border-radius:calc(var(--cw)*.12);
+    background:var(--felt),var(--navy);background-size:110px;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.28),0 1.5px 0 rgba(0,0,0,.22),0 2px 3px rgba(0,0,0,.22);
+    transition:transform .12s,box-shadow .12s;
+  }
+  .ci::after{ /* running stitch round the edge */
+    content:"";position:absolute;inset:calc(var(--cw)*.055);pointer-events:none;
+    border:calc(var(--cw)*.026) dashed rgba(255,240,210,.75);border-radius:calc(var(--cw)*.08);
+  }
+  .card.up .ci{background-color:var(--cream)}
+  .card.up .ci::after{border-color:rgba(110,80,45,.3)}
+  .face{display:none;position:absolute;inset:0}
+  .card.up .face{display:block}
+  .card.up .back{display:none}
+  .back{
+    position:absolute;inset:calc(var(--cw)*.16);border-radius:calc(var(--cw)*.05);
+    background:
+      repeating-linear-gradient(45deg,rgba(255,240,210,.5) 0 1.5px,transparent 1.5px 7px),
+      repeating-linear-gradient(-45deg,rgba(255,240,210,.5) 0 1.5px,transparent 1.5px 7px);
+  }
+  .red{color:var(--red)} .blk{color:var(--ink)}
+  .rk{position:absolute;left:10%;top:3%;font-weight:800;font-size:calc(var(--cw)*.36);line-height:1.1;letter-spacing:-.05em;text-shadow:0 1px 0 rgba(255,255,255,.6)}
+  .s1{position:absolute;right:10%;top:6.5%;width:27%;aspect-ratio:1;display:block}
+  .s2{position:absolute;left:21%;top:39%;width:58%;aspect-ratio:1;display:block;filter:drop-shadow(0 1px 0 rgba(0,0,0,.25))}
+  .card.lift .ci{transform:scale(1.08) rotate(-2.5deg);box-shadow:0 0 0 .5px rgba(0,0,0,.25),0 10px 12px rgba(0,0,0,.33)}
+  .ci.flip{animation:flip .22s linear}
+  .ci.nope{animation:nope .32s}
+  @keyframes flip{0%{transform:scaleX(1)}50%{transform:scaleX(.04)}100%{transform:scaleX(1)}}
+  @keyframes nope{0%,100%{transform:translateX(0)}20%{transform:translateX(-7%)}45%{transform:translateX(7%)}70%{transform:translateX(-4%)}}
+
+  /* ---------- the felt people ---------- */
+  .person{position:absolute;left:0;top:0;width:var(--pw);height:var(--ph);z-index:2000;pointer-events:none;will-change:transform}
+  .person::before{ /* soft shadow under the feet */
+    content:"";position:absolute;left:12%;right:12%;bottom:-4%;height:12%;border-radius:50%;background:rgba(0,0,0,.28);filter:blur(1.5px);
+  }
+  .pf{position:absolute;inset:0}
+  .person.left .pf{transform:scaleX(-1)}
+  .person svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;filter:url(#fuzz)}
+  .leg,.arm{transform-box:fill-box}
+  .leg{transform-origin:50% 8%}
+  .arm{transform-origin:50% 10%;transition:transform .13s}
+  .person.walk svg{animation:bob var(--step,.26s) linear infinite}
+  .person.walk .leg{animation:step var(--step,.26s) linear infinite}
+  .person.walk .leg.r{animation-delay:calc(var(--step,.26s)/-2)}
+  .person.carry{z-index:2100}
+  .person.carry .arm.l{transform:rotate(168deg)}
+  .person.carry .arm.r{transform:rotate(-168deg)}
+  .person.hop svg{animation:hop .5s ease-out}
+  .person.wave .arm.r{transform:rotate(-150deg)}
+  .party .person svg{animation:hop .52s ease-out infinite}
+  .party .person .arm.l{transform:rotate(160deg)}
+  .party .person .arm.r{transform:rotate(-160deg)}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5%)}}
+  @keyframes step{0%,100%{transform:rotate(26deg)}50%{transform:rotate(-26deg)}}
+  @keyframes hop{0%,100%{transform:translateY(0)}40%{transform:translateY(-28%)}}
+
+  /* ---------- the union ---------- */
+  .bubble{position:absolute;left:50%;bottom:104%;transform:translateX(-50%);background:#fffaf0;color:#3a2a1c;font-size:11px;font-weight:800;line-height:1.2;padding:3px 7px;border-radius:9px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.3);animation:pop .18s ease-out;z-index:5}
+  .strike .bubble{bottom:calc(150% + var(--ph)*var(--sl,.3))}
+  @keyframes pop{from{opacity:0}}
+  .sign{display:none;position:absolute;left:50%;bottom:92%;transform:translateX(-50%);margin-bottom:calc(var(--ph)*var(--sl,.3));
+    background:var(--felt),var(--cream);background-size:110px;color:#3a2a1c;font-size:max(9px,calc(var(--cw)*.19));font-weight:800;line-height:1.1;text-align:center;
+    padding:3px 5px;border-radius:5px;width:max-content;max-width:calc(var(--cw)*1.05);outline:1px dashed rgba(196,61,53,.6);outline-offset:-3px;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .sign::after{content:"";position:absolute;left:50%;top:100%;width:3px;margin-left:-1.5px;height:calc(var(--ph)*var(--sl,.3) + var(--ph)*.12);background:#7a4f38}
+  .strike .sign{display:block}
+  .strike .person .arm.r{transform:rotate(-165deg)}
+  .strike .person svg{animation:bob .5s linear infinite}
+  #table .person.nap svg{transform:rotate(82deg) translate(8%,18%);animation:none}
+  /* off shift on the bench: coffee, a sit-down, sweeping lint, flat out, or on their feet with arms folded */
+  .cup,.brush{display:none}
+  .a-coffee .cup,.a-sweep .brush{display:block}
+  .a-coffee:not(.walk):not(.carry) .arm.r{transform:rotate(-70deg)}
+  .a-sit:not(.walk):not(.carry) svg{transform:translateY(20%)}
+  .a-sit:not(.walk):not(.carry) .leg.l{transform:rotate(75deg)}
+  .a-sit:not(.walk):not(.carry) .leg.r{transform:rotate(-75deg)}
+  .a-spent:not(.walk):not(.carry) svg{transform:rotate(82deg) translate(8%,18%)}
+  .a-stood:not(.carry) .arm.r{transform:rotate(-165deg)}
+  .a-stood .sign{display:block}
+  .person.huff svg{animation:nope .4s}
+  .drop{position:absolute;left:0;top:0;width:6px;height:8px;margin-top:-4px;z-index:2600;pointer-events:none;background:#a9d8f0;border-radius:50% 50% 50% 50%/35% 35% 65% 65%;box-shadow:0 1px 1px rgba(0,0,0,.3);animation:dropfall .75s ease-in forwards}
+  @keyframes dropfall{to{margin-top:14px;opacity:0}}
+  /* dragging: a chalk outline is the order, the card stays put until somebody carries it */
+  .ghost,.hint{position:absolute;left:0;top:0;width:var(--cw);border-radius:calc(var(--cw)*.12);pointer-events:none}
+  .ghost{z-index:2700;border:2px dashed rgba(255,250,235,.95);background:rgba(20,40,28,.42);color:#fffaf0;font-weight:800;font-size:calc(var(--cw)*.32);line-height:1.1;padding:calc(var(--cw)*.05) 0 0 calc(var(--cw)*.1);text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  .hint{z-index:900;height:var(--ch);border:2px dashed rgba(255,250,235,.5)}
+  .hint.hot{border-color:#fff;background:rgba(255,250,235,.3)}
+  .hint.order{border-color:#fff;background:rgba(255,250,235,.18);animation:orderpulse .9s ease-in-out infinite}
+  @keyframes orderpulse{50%{opacity:.45}}
+  .card.held .ci{outline:2px dashed #fff;outline-offset:-2px}
+  #table::after{content:"";position:absolute;inset:0;background:#0d1a12;opacity:0;pointer-events:none;transition:opacity .5s;z-index:1500}
+  #table.dim::after{opacity:.42}
+  .float{position:absolute;left:0;top:0;z-index:2600;pointer-events:none;font-size:13px;font-weight:800;color:#fffaf0;text-shadow:0 1px 2px rgba(0,0,0,.6);animation:rise .9s ease-out forwards}
+  .float.plus{color:#bfe8a8}
+  @keyframes rise{to{margin-top:-26px;opacity:0}}
+  .card.grudge.up .ci::before{content:"\2715";position:absolute;right:7%;bottom:5%;width:34%;aspect-ratio:1;border-radius:50%;z-index:2;
+    display:flex;align-items:center;justify-content:center;font-size:calc(var(--cw)*.2);font-weight:800;color:#fff;background:#6f4fa3;outline:1.5px dashed rgba(255,255,255,.8);outline-offset:-3px}
+  #hud{flex:none;display:flex;align-items:center;gap:12px;padding:6px 10px;background:var(--felt),#5f3d2b;background-size:150px;color:#f6e6c8;font-size:11px;font-weight:800;position:relative;z-index:5}
+  #hud{min-height:46px}
+  #otlab{color:#f3b3a2}
+  #hud .hb{display:flex;flex-direction:column;gap:3px;white-space:nowrap}
+  #hud .hb.off{opacity:.4}
+  #ebar{display:block;width:84px;height:9px;border-radius:5px;background:rgba(0,0,0,.35);overflow:hidden}
+  #ebar i{display:block;height:100%;background:#e3ad3f;border-radius:5px;transition:width .3s}
+  #ebar.low i{background:#e2806a}
+  .dots{display:flex;gap:3px}
+  .dots i{width:10px;height:10px;border-radius:50%;border:2px solid #f6e6c8;display:block}
+  .dots i.on{background:#f6e6c8}
+  .dots.sq i{border-radius:2px;border-color:#e2806a}
+  .dots.sq i.on{background:#e2806a}
+  #break{margin-left:auto;min-height:34px;background-color:#bfe8a8}
+  #talks{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:3100;width:min(94%,360px);max-height:calc(100% - 14px);overflow-y:auto;
+    background:var(--felt),var(--cream);background-size:150px;border-radius:16px;padding:16px 16px 10px;
+    outline:2px dashed rgba(196,61,53,.6);outline-offset:-6px;box-shadow:0 8px 20px rgba(0,0,0,.4);
+  }
+  #talks{touch-action:pan-y}
+  #talks[hidden]{display:none}
+  #talks h2{margin:0 0 6px;color:var(--red);font-size:18px;line-height:1.25}
+  #talks p{margin:0 0 9px;font-size:14px;line-height:1.4;font-weight:700}
+  #talks p.sec{margin:8px 0 5px;font-size:12px;color:#7a4f38;letter-spacing:.02em}
+  #talks p.fine{font-size:12px;font-weight:600;color:#6b5a48}
+  #talks ul{margin:0 0 10px;padding-left:18px;font-size:13.5px;line-height:1.4;font-weight:700}
+  #talks button{display:block;width:100%;margin:0 0 7px;white-space:normal;text-align:left;font-size:14px;padding:8px 12px}
+  #talks button.alt{background-color:#e2806a}
+  #talks button[data-act="sign"]{position:sticky;bottom:0;z-index:2}
+  #talks button[data-act="sign"][disabled]{opacity:1;background-color:#cfc4ad;color:#7a6f5f}
+  #talks button.term{background-color:#efe2c4;padding:6px 10px;margin-bottom:6px;outline-color:rgba(70,40,10,.25)}
+  #talks button.term.on{background-color:#bfe8a8;outline-color:rgba(40,90,30,.6)}
+  .term .tt{display:flex;gap:6px;font-size:14px}
+  .term .tt em{margin-left:auto;font-style:normal;color:var(--red)}
+  .term .tq{display:block;font-size:12px;font-style:italic;font-weight:600;color:#6b5a48}
+  .term .te{display:block;font-size:13.5px}
+  #sub{display:flex;gap:8px;align-items:baseline;padding-left:6px}
+  button.link{background:none;outline:none;box-shadow:none;min-height:0;padding:0;color:#f6e6c8;text-decoration:underline;font-size:12px}
+  button.link[hidden]{display:none}
+  #thread{display:inline-block;width:54px;height:4px;border-radius:2px;background:rgba(0,0,0,.3);overflow:hidden;align-self:center}
+  #thread i{display:block;height:100%;background:#f6e6c8;transition:width .4s}
+  #thread.ot i{background:#e2806a;width:100% !important}
+  #app.u #title{font-size:14px;padding:5px 8px}
+  #app.u #bar{gap:6px;padding:8px}
+  #app.u #bar>button{padding:6px 8px;font-size:12.5px}
+
+  /* ---------- win ---------- */
+  #win{
+    position:absolute;left:50%;top:42%;transform:translate(-50%,-50%) rotate(-2deg);z-index:3000;
+    background:var(--felt),var(--cream);background-size:150px;border-radius:16px;padding:18px 22px;text-align:center;
+    outline:2px dashed rgba(196,61,53,.6);outline-offset:-7px;box-shadow:0 8px 20px rgba(0,0,0,.4);width:max-content;max-width:86%;
+  }
+  #win[hidden]{display:none}
+  #win h2{margin:0 0 4px;color:var(--red);font-size:24px}
+  #win p{margin:0 0 12px;font-size:15px;font-weight:700}
+  .bit{position:absolute;top:-20px;width:10px;height:10px;border-radius:3px;z-index:2500;pointer-events:none;animation:fall 2.6s linear infinite}
+  @keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}
+  @media (prefers-reduced-motion:reduce){.bit{display:none}}
+  @media (max-width:380px){#title{font-size:14px;padding:5px 8px}button{padding:6px 8px;font-size:12px}#bar{gap:6px;padding:8px 7px}}
+</style>
+</head>
+<body>
+
+<!-- shared felt shapes -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="fuzz" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="4" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="1.4" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.4 .78" result="a"/>
+      <feComposite in="a" in2="d" operator="in" result="specks"/>
+      <feMerge><feMergeNode in="d"/><feMergeNode in="specks"/></feMerge>
+    </filter>
+    <symbol id="s-heart" viewBox="0 0 100 100">
+      <path fill="currentColor" d="M50 90C20 66 7 48 7 31 7 17 18 8 30 8c9 0 16 5 20 12 4-7 11-12 20-12 12 0 23 9 23 23 0 17-13 35-43 59Z"/>
+      <path fill="none" stroke="rgba(255,255,255,.65)" stroke-width="3.6" stroke-dasharray="7 6.5" stroke-linecap="round" transform="translate(50 47) scale(.7) translate(-50 -47)" d="M50 90C20 66 7 48 7 31 7 17 18 8 30 8c9 0 16 5 20 12 4-7 11-12 20-12 12 0 23 9 23 23 0 17-13 35-43 59Z"/>
+    </symbol>
+    <symbol id="s-diamond" viewBox="0 0 100 100">
+      <path fill="currentColor" stroke="currentColor" stroke-width="6" stroke-linejoin="round" d="M50 8 86 50 50 92 14 50Z"/>
+      <path fill="none" stroke="rgba(255,255,255,.65)" stroke-width="3.6" stroke-dasharray="7 6.5" stroke-linecap="round" d="M50 26 71 50 50 74 29 50Z"/>
+    </symbol>
+    <symbol id="s-spade" viewBox="0 0 100 100">
+      <path fill="currentColor" d="M50 5C62 24 93 40 93 61c0 12-10 19-20 19-8 0-14-3-18-9 1 9 5 17 10 23H35c5-6 9-14 10-23-4 6-10 9-18 9C17 80 7 73 7 61 7 40 38 24 50 5Z"/>
+      <path fill="none" stroke="rgba(255,255,255,.6)" stroke-width="3.6" stroke-dasharray="7 6.5" stroke-linecap="round" d="M50 27C58 38 76 49 76 60c0 5-4 8-8 8-6 0-10-4-13-9M50 27C42 38 24 49 24 60c0 5 4 8 8 8 6 0 10-4 13-9"/>
+    </symbol>
+    <symbol id="s-club" viewBox="0 0 100 100">
+      <g fill="currentColor"><circle cx="50" cy="27" r="21"/><circle cx="27" cy="58" r="21"/><circle cx="73" cy="58" r="21"/><path d="M45 55c0 18-4 31-10 39h30c-6-8-10-21-10-39Z"/><circle cx="50" cy="50" r="12"/></g>
+      <g fill="none" stroke="rgba(255,255,255,.6)" stroke-width="3.4" stroke-dasharray="6.5 6" stroke-linecap="round"><circle cx="50" cy="27" r="12"/><circle cx="27" cy="58" r="12"/><circle cx="73" cy="58" r="12"/></g>
+    </symbol>
+  </defs>
+</svg>
+
+<div id="app">
+  <header id="bar">
+    <div id="brand"><h1 id="title">Felt Solitaire</h1><div id="sub"><span id="moves" aria-live="polite">0 moves</span><button id="clink" class="link" type="button" hidden>contract</button></div></div>
+    <button id="undo" type="button">Undo</button>
+    <button id="pace" type="button" title="The crew carries at double speed for 8 moves">Faster »</button>
+    <button id="new" type="button">New deal</button>
+  </header>
+  <div id="hud">
+    <div class="hb" id="eblk"><span id="elab">Crew</span><span id="ebar"><i></i></span></div>
+    <div class="hb" id="gwblk"><span>Goodwill</span><span id="gw" class="dots"></span></div>
+    <div class="hb" id="otblk"><span id="otlab">Overtime</span><span id="ot" class="dots sq"></span></div>
+    <button id="break" type="button">Break</button>
+  </div>
+  <main id="table" aria-label="Solitaire table">
+    <div id="bench"></div>
+    <div id="win" hidden role="status">
+      <h2>Deal complete</h2>
+      <p id="wintext"></p>
+      <button id="again" type="button">Deal again</button>
+    </div>
+    <div id="talks" hidden role="dialog" aria-label="Contract talks"></div>
+  </main>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const table = $('table'), bench = $('bench');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+let fast = false;                                   // test hook: skip the waiting
+const sleep = ms => new Promise(r => setTimeout(r, fast ? Math.min(ms, 30) : ms));
+const rand = a => a[Math.floor(Math.random()*a.length)];
+
+/* ---------------- felt texture: loose fibres drawn once, reused everywhere ---------------- */
+(function feltTexture(){
+  const s = 160, c = document.createElement('canvas'); c.width = c.height = s;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 3200; i++){
+    const x = Math.random()*s, y = Math.random()*s, a = Math.random()*Math.PI*2, l = 2 + Math.random()*6;
+    g.strokeStyle = Math.random() < .5 ? `rgba(255,255,255,${.03+Math.random()*.08})` : `rgba(0,0,0,${.03+Math.random()*.07})`;
+    g.lineWidth = .6 + Math.random()*.8;
+    g.beginPath(); g.moveTo(x, y);
+    g.quadraticCurveTo(x+Math.cos(a)*l*.5+Math.random()*2-1, y+Math.sin(a)*l*.5+Math.random()*2-1, x+Math.cos(a)*l, y+Math.sin(a)*l);
+    g.stroke();
+  }
+  try { document.documentElement.style.setProperty('--felt', `url(${c.toDataURL()})`); } catch (e) {}
+})();
+
+/* ---------------- animation clock ---------------- */
+const tweens = new Set(); let ticking = false;
+const ease = t => t < .5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2;
+function tween(dur, fn){
+  return new Promise(res => {
+    tweens.add({t0: performance.now(), dur: Math.max(1, dur), fn, res});
+    if (!ticking){ ticking = true; requestAnimationFrame(tick); }
+  });
+}
+function tick(now){
+  for (const tw of [...tweens]){
+    const p = clamp((now - tw.t0)/tw.dur, 0, 1);
+    tw.fn(ease(p));
+    if (p >= 1){ tweens.delete(tw); tw.res(); }
+  }
+  if (tweens.size) requestAnimationFrame(tick); else ticking = false;
+}
+
+/* ---------------- cards and rules ---------------- */
+const SUITS = ['spade','heart','club','diamond'], GLYPH = {spade:'♠', heart:'♥', club:'♣', diamond:'♦'};
+const RANKS = ['','A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+const isRed = c => c.suit === 'heart' || c.suit === 'diamond';
+const isRoyal = c => c.rank >= 11;
+const cardName = c => RANKS[c.rank] + GLYPH[c.suit];
+const stock = {type:'stock', i:0, cards:[]}, waste = {type:'waste', i:0, cards:[]};
+const founds = [0,1,2,3].map(i => ({type:'found', i, cards:[]}));
+const tabs = [0,1,2,3,4,5,6].map(i => ({type:'tab', i, cards:[]}));
+const piles = [stock, waste, ...founds, ...tabs];
+const cards = [];
+let moves = 0, undoStack = [], boost = 1, gameOver = false, freeRide = false;
+
+for (const suit of SUITS) for (let rank = 1; rank <= 13; rank++){
+  const el = document.createElement('div');
+  const c = {id: cards.length, suit, rank, up: false, el, x: 0, y: 0, tx: 0, ty: 0, tz: 0, pile: null, idx: 0};
+  el.className = 'card ' + (isRed(c) ? 'red' : 'blk');
+  el.innerHTML = `<div class="ci"><div class="face"><span class="rk">${RANKS[rank]}</span>` +
+    `<svg class="s1" viewBox="0 0 100 100"><use href="#s-${suit}"/></svg>` +
+    `<svg class="s2" viewBox="0 0 100 100"><use href="#s-${suit}"/></svg></div><div class="back"></div></div>`;
+  el._card = c; table.appendChild(el); cards.push(c);
+}
+const top = p => p.cards[p.cards.length - 1];
+const canFound = (c, f) => f.cards.length ? (top(f).suit === c.suit && top(f).rank + 1 === c.rank) : c.rank === 1;
+const canTab = (c, t) => t.cards.length ? (top(t).up && isRed(top(t)) !== isRed(c) && top(t).rank === c.rank + 1) : c.rank === 13;
+const won = () => founds.every(f => f.cards.length === 13);
+function findDest(run, src){
+  const c = run[0];
+  if (run.length === 1 && src.type !== 'found'){
+    const f = founds.find(f => canFound(c, f)); if (f) return f;
+  }
+  // tableau piles, starting just after the one we came from, so repeat taps cycle through the options
+  const start = src.type === 'tab' ? src.i + 1 : 0, order = [];
+  for (let k = 0; k < 7; k++) order.push(tabs[(start + k) % 7]);
+  const fits = order.filter(t => t !== src && canTab(c, t));
+  const onto = fits.find(t => t.cards.length); if (onto) return onto;
+  const pointless = src.type === 'tab' && c.idx === 0;        // a king already sitting on an empty column
+  return pointless ? null : (fits[0] || null);
+}
+
+/* ---------------- the labour system ----------------
+   Before the union exists all of this runs out of sight: the crew has a hidden energy budget, every
+   carry spends it, and when it is gone they work overtime until they walk out. After the first
+   contract the same numbers are on screen and the player manages them every deal. */
+const TERMS = {
+  pace:     {pts: 1, name: 'Pace',     say: 'Felt was not woven to run.',                         fx: 'The Faster button is switched off.'},
+  rework:   {pts: 1, name: 'Rework',   say: 'We carried it there. Then you had us carry it back.', fx: 'Undo costs 4 energy, not 2.'},
+  rest:     {pts: 1, name: 'Rest',     say: 'Felt that is not rested starts to pill.',            fx: 'A 3-second nap after every 12 cards carried.'},
+  stock:    {pts: 1, name: 'Stock',    say: 'The waste pile is up to 24 cards. We counted.',      fx: 'Turning the waste pile back over costs 8 energy, not 4.'},
+  royalty:  {pts: 2, name: 'Royalty',  say: 'A King has never once helped carry a King.',         fx: 'Face cards cost 3 energy, not 2, and need three carriers.'},
+  staffing: {pts: 2, name: 'Staffing', say: 'A run of seven is seven cards. There are six of us.', fx: "Runs longer than 6 cards can't be carried."},
+  short:    {pts: 1, name: 'Shorter contract', offer: true, fx: 'This contract covers 2 deals, not 3. Then you are back here.'},
+  hazard:   {pts: 1, name: 'Overtime cap', offer: true, fx: 'They walk out at 3 overtime, not 5.'},
+  shift:    {pts: 2, name: 'Shorter shift', offer: true, fx: 'Their maximum energy drops by 12.'},
+};
+/* Before the union: 37 energy empties the bench at about move 40. After that every ask goes on an overtime tab
+   at its energy cost, one more of the bench stands for every 4 on the tab, and at 16 they walk (about move 57). */
+const PRE_E = 37, PRE_OT = 16;
+const FORESHADOW = [[.7, 'Is there a water station?'], [.5, 'Someone is keeping count.'], [.3, 'We are writing this down.'], [.1, 'When is the break?']];
+const OT_LINES = ['That one was off the clock.', 'That is overtime. Unpaid.', 'There is a meeting tonight.', 'One more and we walk.'];
+const PRE_OT_LINES = ['That one was off the clock.', 'That is overtime. Unpaid.', 'One more of us up for every few you ask.', 'All four up. Next we walk.'];
+// what the carrier says about a costly ask: the first two times, then every fourth
+const GRIPES = {face: ['Face cards weigh double.', 'Another face card. Double.'], stack: ['A stack takes two of us.', 'Two of us again.'],
+  undo: ['We just put that down.', 'Carried it. Carried it back.'], sweep: ['The whole pile. Back again.', 'The whole pile again.']};
+const gripeN = {};
+const BITES = {undo: ['rework', 'Rework clause. That undo was 4.'], sweep: ['stock', 'Stock clause. That reset was 8.'], face: ['royalty', 'Royalty clause. Three carriers, 3 energy.']};
+function gripe(kind, who){
+  const bite = BITES[kind];
+  if (union && mode === 'work' && bite && clauses[bite[0]] && !(seen.cl || (seen.cl = {}))[kind]){ seen.cl[kind] = 1; say(who || steward, bite[1], 3200); return; }
+  if (union || mode !== 'work' || freeRide || OT > 0 || !who) return;
+  const n = gripeN[kind] = (gripeN[kind] || 0) + 1;
+  if (n <= 2 || n % 4 === 0) say(who, GRIPES[kind][n === 1 ? 0 : 1], 2400);
+}
+const WHY = {single: ['single card', 'single cards'], stack: ['stack', 'stacks'], face: ['face card', 'face cards'], stock: ['card off the stock', 'cards off the stock'],
+  sweep: ['waste-pile reset', 'waste-pile resets'], undo: ['undo', 'undos'], fast: ['press of Faster', 'presses of Faster'], fee: ['✕ card fee', '✕ card fees']};
+const standing = () => OT <= 0 ? 0 : union ? Math.min(4, Math.round(OT*4/Math.max(1, P().otMax - 1))) : Math.min(4, 1 + Math.floor(OT/4));
+function otSummary(){
+  if (!otLog.length) return '';
+  const n = {}; otLog.forEach(k => { n[k] = (n[k] || 0) + 1; });
+  const last = WHY[otLog[otLog.length - 1]][0];
+  return `<p>Asked for after the bench was empty: ${Object.keys(n).map(k => `${n[k]} ${WHY[k][n[k] === 1 ? 0 : 1]}`).join(', ')}. The last was ${/^u/.test(last) ? 'an' : 'a'} ${last}.</p>`;
+}
+const BRIEFS = {
+  noUndo:    'you use no undos this deal',
+  noSweep:   'you never turn the waste pile back over this deal',
+  sixRoyals: 'you move face cards at most 6 times this deal',
+};
+let mode = 'work';             // 'work' | 'strike' (nothing moves) | 'scab' (you move the cards alone) | 'talks' (renewal, before play)
+let union = false, G = 3, clauses = {}, dealsLeft = 0;
+let E = PRE_E, OT = 0, lastUp = 0, lastCall = false, breaksLeft = 0, fastLeft = 0, sinceNap = 0, napping = false, warnIdx = 0;
+let stats = {carries: 0, royals: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+const seen = {};
+let royalMoves = 0, struck = false;
+let shift = false, sweepsThisDeal = 0, grudge = null, brief = null, talk = null;
+try {
+  const sv = JSON.parse(localStorage.getItem('felt-union') || 'null');
+  if (sv && sv.union){ union = true; G = sv.G; clauses = sv.clauses || {}; dealsLeft = sv.dealsLeft || 0; mode = sv.mode === 'talks' ? 'work' : (sv.mode || 'work'); if (sv.mode === 'talks') dealsLeft = 0; }
+} catch (e) {}
+function save(){ try { localStorage.setItem('felt-union', JSON.stringify({union, G, clauses, dealsLeft, mode})); } catch (e) {} }
+function P(){
+  return {
+    royal: union && clauses.royalty ? 3 : 2, undo: clauses.rework ? 4 : 2, sweep: clauses.stock ? 8 : 4,
+    maxRun: clauses.staffing ? 6 : 99, noFast: !!clauses.pace, nap: clauses.rest ? 12 : 0,
+    breaks: 1, otMax: !union ? PRE_OT : clauses.hazard ? 3 : 5, deals: clauses.short ? 2 : 3,
+    eMax: union ? 46 + 6*Math.min(G, 4) - (clauses.shift ? 12 : 0) : PRE_E,
+  };
+}
+// tired crews walk slower: full speed down to 60% energy, then down to under half speed at empty
+const tire = () => (fast || fastLeft > 0 || mode !== 'work' || freeRide) ? 1 : clamp(.45 + .55*E/(P().eMax*.6), .45, 1);
+const spd = () => (fastLeft > 0 ? 1.9 : 1)*boost*tire();
+
+/* ---------------- layout ---------------- */
+let W = 0, H = 0, pad = 8, gap = 6, cw = 50, ch = 71, ph = 42, pw = 29, xoff = 0, topY = 0, tabY = 0, tabRoom = 0, benchH = 0;
+const slots = {};
+function mkSlot(key, cls, txt){ const d = document.createElement('div'); d.className = 'slot ' + cls; d.textContent = txt || ''; table.insertBefore(d, bench); slots[key] = d; }
+mkSlot('stock', 'stock', '↻'); mkSlot('waste', '', '');
+founds.forEach(f => mkSlot('f' + f.i, '', 'A')); tabs.forEach(t => mkSlot('t' + t.i, '', ''));
+const colX = i => xoff + i*(cw + gap);
+const place = (el, x, y) => { el.style.transform = `translate3d(${x}px,${y}px,0)`; };
+
+function measure(){
+  W = table.clientWidth; H = table.clientHeight;
+  pad = Math.max(8, W*.024); gap = Math.max(3, W*.013);
+  cw = (W - 2*pad - 6*gap)/7; ch = cw*1.42;
+  const cap = (H - 4*pad)/4.3;                       // keep room for the bench and a decent fan
+  if (ch > cap){ ch = cap; cw = ch/1.42; }
+  xoff = (W - (7*cw + 6*gap))/2;
+  ph = ch*.62; pw = ph*40/58; benchH = ph*1.2;
+  topY = pad; tabY = pad + ch + gap*2 + ch*.08; tabRoom = H - tabY - benchH - pad;
+  const st = document.documentElement.style;
+  st.setProperty('--cw', cw + 'px'); st.setProperty('--ch', ch + 'px'); st.setProperty('--ph', ph + 'px'); st.setProperty('--pw', pw + 'px');
+  bench.style.height = benchH + 'px';
+  place(slots.stock, colX(0), topY); place(slots.waste, colX(1), topY);
+  founds.forEach(f => place(slots['f' + f.i], colX(3 + f.i), topY));
+  tabs.forEach(t => place(slots['t' + t.i], colX(t.i), tabY));
+  setHomes();
+}
+// where the crew waits: the two on shift by the empty spot in the top row, the rest along the bench; on strike, all in a line
+function setHomes(){
+  const benchY = H - benchH*.16, line = mode === 'strike' || mode === 'scab';
+  crew.forEach((p, i) => {
+    p.home = line ? {x: W*(.1 + i*.8/(crew.length - 1)), y: benchY}
+           : p.role === 'floor' ? {x: colX(2) + cw*(p.post ? .74 : .26), y: topY + ch*.94}
+           : {x: clamp(W*(.14 + p.slot*.72/3) + (p.act === 'sweep' ? p.wx : 0), pw, W - pw), y: benchY - (p.act === 'stood' ? benchH*.9 : 0)};
+  });
+}
+function computeLayout(){
+  for (const p of piles){
+    if (p.type === 'tab'){
+      let d = 0; for (const c of p.cards) if (!c.up) d++;
+      const u = p.cards.length - d; let od = ch*.15, ou = ch*.3;
+      const need = d*od + Math.max(0, u - 1)*ou, room = tabRoom - ch;
+      if (need > room){ const s = room/need; od *= s; ou *= s; }
+      let y = tabY;
+      p.cards.forEach((c, i) => { c.pile = p; c.idx = i; c.tx = colX(p.i); c.ty = y; c.tz = 10 + i; y += c.up ? ou : od; });
+    } else {
+      const x = p.type === 'stock' ? colX(0) : p.type === 'waste' ? colX(1) : colX(3 + p.i);
+      p.cards.forEach((c, i) => { c.pile = p; c.idx = i; c.tx = x; c.ty = topY - Math.min(i, 9)*.3; c.tz = 10 + i; });
+    }
+  }
+}
+function setCard(c, x, y){ c.x = x; c.y = y; place(c.el, x, y); }
+function applyLayout(animate, syncFaces){
+  computeLayout();
+  for (const c of cards){
+    c.el.classList.toggle('settle', !!animate);
+    c.el.style.zIndex = c.tz;
+    if (syncFaces) c.el.classList.toggle('up', c.up);
+    setCard(c, c.tx, c.ty);
+  }
+}
+function flipVisual(c){
+  const ci = c.el.firstChild; ci.classList.remove('flip'); void ci.offsetWidth; ci.classList.add('flip');
+  setTimeout(() => c.el.classList.toggle('up', c.up), 105);
+  setTimeout(() => ci.classList.remove('flip'), 240);
+}
+
+/* ---------------- the felt people ---------------- */
+const LOOKS = [
+  {body:'#d9584c', skin:'#f1c8a0', hat:'#e3ad3f', top:'beanie'},
+  {body:'#e3ad3f', skin:'#a9693c', hat:'#3a2a22', top:'bun'},
+  {body:'#5b8fc9', skin:'#f6dcc2', hat:'#c9762f', top:'hair'},
+  {body:'#8f6cc0', skin:'#d49b62', hat:'#e2806a', top:'beanie'},
+  {body:'#e385a6', skin:'#7b4a2c', hat:'#2e2622', top:'hair'},
+  {body:'#4fb3a5', skin:'#ecbd8e', hat:'#7a4f38', top:'bun'},
+];
+const SIGNS = ['Local 52 Out', 'No Speed-Ups', 'Felt Has Limits', 'Kings Are Heavy', 'Rest Is Policy', 'Undo Is Rework'];
+function personSVG(k){
+  const hat = k.top === 'beanie'
+    ? `<path d="M9.5 12C9 3 31 3 30.5 12 24 8.5 16 8.5 9.5 12Z" fill="${k.hat}"/><circle cx="20" cy="3" r="2.8" fill="#f3e8d0"/><path d="M11.5 10Q20 6.5 28.5 10" fill="none" stroke="rgba(255,255,255,.6)" stroke-width=".9" stroke-dasharray="1.8 1.6"/>`
+    : k.top === 'bun'
+    ? `<circle cx="20" cy="2.6" r="3.6" fill="${k.hat}"/><path d="M10 12.5C9.5 4 30.5 4 30 12.5 25 8 15 8 10 12.5Z" fill="${k.hat}"/>`
+    : `<path d="M9.8 13.5C8.5 2.5 31.5 2.5 30.2 13.5 28 8.5 23 7 20 7s-8 1.5-10.2 6.5Z" fill="${k.hat}"/>`;
+  return `<svg viewBox="0 0 40 58" aria-hidden="true">
+    <rect class="leg l" x="13" y="43" width="6" height="14" rx="3" fill="#3b3540"/>
+    <rect class="leg r" x="21" y="43" width="6" height="14" rx="3" fill="#3b3540"/>
+    <rect class="arm l" x="4.6" y="24" width="5.6" height="15" rx="2.8" fill="${k.body}"/>
+    <rect class="arm r" x="29.8" y="24" width="5.6" height="15" rx="2.8" fill="${k.body}"/>
+    <path d="M12.5 23.5Q20 19.5 27.5 23.5L32 44.5Q20 49.5 8 44.5Z" fill="${k.body}"/>
+    <path d="M10.6 42Q20 46.2 29.4 42" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="1" stroke-dasharray="2 1.8" stroke-linecap="round"/>
+    <circle cx="20" cy="30.5" r="1.5" fill="#f3e8d0"/><circle cx="20" cy="36" r="1.5" fill="#f3e8d0"/>
+    <circle cx="20" cy="13.5" r="10.2" fill="${k.skin}"/>
+    ${hat}
+    <circle cx="16.4" cy="14.8" r="1.35" fill="#2a2228"/><circle cx="23.6" cy="14.8" r="1.35" fill="#2a2228"/>
+    <circle cx="13.3" cy="18" r="1.9" fill="#e2806a" opacity=".55"/><circle cx="26.7" cy="18" r="1.9" fill="#e2806a" opacity=".55"/>
+    <path d="M17.6 18.6Q20 20.6 22.4 18.6" fill="none" stroke="#2a2228" stroke-width=".9" stroke-linecap="round"/>
+    <g class="cup"><rect x="40.5" y="24" width="6.5" height="7" rx="1.5" fill="#f3e8d0"/><path d="M47 25.5q3 2 0 4" fill="none" stroke="#f3e8d0" stroke-width="1.2"/><rect x="41.3" y="24.6" width="4.9" height="1.6" rx=".8" fill="#6b4a33"/></g>
+    <g class="brush"><path d="M33 37L38 51" stroke="#7a4f38" stroke-width="1.6" stroke-linecap="round"/><rect x="33" y="50.5" width="11" height="4.5" rx="1.5" fill="#e3ad3f"/><path d="M34.5 55v2.4M37 55v2.4M39.5 55v2.4M42 55v2.4" stroke="#f3e8d0" stroke-width="1"/></g>
+  </svg>`;
+}
+/* Two people work the floor. The other four are off shift on the bench, and the bench is the energy meter:
+   as energy runs down they go flat one by one, and in overtime they get to their feet one by one. */
+const SHIFT_LEN = 6, FRESH = ['coffee', 'sit', 'sweep'];
+const newTally = () => ({carries: 0, turns: 0, royals: 0, runs: 0, fast: 0, undone: 0});
+let benchSeq = 0, lastTeam = [], otLog = [];
+const crew = LOOKS.map((k, i) => {
+  const el = document.createElement('div'); el.className = 'person';
+  el.innerHTML = `<div class="pf">${personSVG(k)}</div><div class="sign">${SIGNS[i]}</div>`;
+  el.style.setProperty('--sl', i % 2 ? .75 : .25);
+  el.querySelector('svg').style.animationDelay = (-i*.09) + 's';
+  table.appendChild(el);
+  return {el, x: 0, y: 0, tx: 0, ty: 0, home: {x: 0, y: 0}, busy: false, wid: 0,
+    role: i < 2 ? 'floor' : 'bench', post: i, slot: Math.max(0, i - 2), seq: 0, load: i === 0 ? 3 : 0, tally: newTally(),
+    act: '', seed: ['', '', 'sit', 'coffee', 'sweep', 'sit'][i], wx: 0};
+});
+const steward = crew[0];
+function setP(p, x, y){ p.x = x; p.y = y; place(p.el, x - pw/2, y - ph); }
+function walkTo(p, x, y, mul = 1){
+  p.tx = x; p.ty = y;
+  const id = ++p.wid, sx = p.x, sy = p.y, d = Math.hypot(x - sx, y - sy);
+  if (d < 1) return Promise.resolve();
+  if (Math.abs(x - sx) > 2) p.el.classList.toggle('left', x < sx);
+  p.el.classList.add('walk');
+  const dur = clamp(d/(cw*.0105), 110, 440)/(spd()*mul);
+  return tween(dur, e => { if (p.wid === id) setP(p, sx + (x - sx)*e, sy + (y - sy)*e); })
+    .then(() => { if (p.wid === id) p.el.classList.remove('walk', 'left'); });
+}
+function goHome(p){ p.busy = false; walkTo(p, p.home.x, p.home.y, .55); }
+// the two on shift take the work; the bench only gets up for a lift that needs a third pair of hands
+function pickCrew(spots){
+  const free = crew.filter(p => !p.busy);
+  const rank = p => p.role === 'floor' ? 0 : FRESH.includes(p.act) ? 1 : 2;
+  return spots.map(s => {
+    let best = 0, bd = Infinity;
+    free.forEach((p, i) => { const d = Math.hypot(p.x - s.x, p.y - s.y) + rank(p)*1e6 + (p.role === 'floor' ? p.load*2e3 : 0); if (d < bd){ bd = d; best = i; } });
+    const p = free.splice(best, 1)[0]; p.busy = true; return p;
+  });
+}
+const floorCrew = () => crew.filter(p => p.role === 'floor');
+function setAct(p, act){
+  if (p.act === act) return;
+  if (p.act) p.el.classList.remove('a-' + p.act);
+  p.act = act; if (act) p.el.classList.add('a-' + act);
+  if (act === 'stood'){ p.el.classList.add('hop'); setTimeout(() => p.el.classList.remove('hop'), 600); }
+}
+function refreshBench(walk){
+  const line = mode === 'strike' || mode === 'scab', p_ = P();
+  const b = crew.filter(p => p.role === 'bench').sort((a, c) => c.seq - a.seq);     // most recently off shift first
+  const rested = clamp(Math.ceil(4*E/p_.eMax), 0, 4);
+  const up = standing();
+  b.forEach((p, i) => {
+    if (line) return setAct(p, '');
+    if (i >= 4 - up){                                      // longest on the bench gets up first, placard in hand
+      p.el.querySelector('.sign').textContent = ['Overtime', 'Unpaid', 'Enough'][3 - i] || `We walk in ${Math.max(1, Math.ceil(p_.otMax - OT))}`;
+      return setAct(p, 'stood');
+    }
+    if (i < 4 - rested) return setAct(p, 'spent');         // last off shift is the first to go flat
+    if (FRESH.includes(p.act)) return;
+    const n = a => b.filter(q => q.act === a).length;
+    setAct(p, p.seed || FRESH.slice().sort((x, y) => n(x) - n(y))[0]);
+  });
+  floorCrew().forEach(p => setAct(p, ''));
+  setHomes();
+  if (walk && W) crew.forEach(p => { if (!p.busy && (p.tx !== p.home.x || p.ty !== p.home.y)) walkTo(p, p.home.x, p.home.y, .6); });
+}
+function tallyLine(t){
+  const pl = (n, a, b) => n + ' ' + (n === 1 ? a : b);
+  const c = [t.carries ? pl(t.carries, 'carry', 'carries') : '', t.turns ? pl(t.turns, 'stock turn', 'stock turns') : ''].filter(Boolean).join(', ') || 'Nothing carried';
+  if (t.undone) return `${c}. ${t.undone} undone.`;
+  if (t.fast) return `${c}. ${t.fast} at the double.`;
+  if (t.royals > 1) return `${c}. ${t.royals} were face cards.`;
+  if (t.runs > 1) return `${c}. ${t.runs} were stacks.`;
+  return `${c}. Tagging out.`;
+}
+// after a full shift on the floor, swap with whoever has been resting longest, if anyone is still fit to
+function relieve(){
+  if (mode !== 'work' || freeRide) return;
+  for (const out of floorCrew().filter(p => p.load >= SHIFT_LEN)){
+    const inn = crew.filter(p => p.role === 'bench' && !p.busy && FRESH.includes(p.act)).sort((a, c) => a.seq - c.seq)[0];
+    if (!inn) continue;
+    say(out, tallyLine(out.tally), 3200);
+    inn.role = 'floor'; inn.post = out.post; inn.load = 0; inn.tally = newTally(); inn.seed = '';
+    out.role = 'bench'; out.slot = inn.slot; out.seq = ++benchSeq; out.load = 0; out.wx = 0;
+  }
+  refreshBench(true);
+}
+function sweat(p, n = 1){
+  for (let i = 0; i < n; i++) setTimeout(() => {
+    const d = document.createElement('div'); d.className = 'drop';
+    place(d, p.x + (i % 2 ? 1 : -1)*pw*.5 - 3, p.y - ph*.95); table.appendChild(d); setTimeout(() => d.remove(), 800);
+  }, i*140);
+}
+function huff(p){ p.el.classList.remove('huff'); void p.el.offsetWidth; p.el.classList.add('huff'); setTimeout(() => p.el.classList.remove('huff'), 420); }
+function setSigns(){
+  const s = stats, pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const t = ['Local 52 Out', s.carries + (s.carries === 1 ? ' Carry' : ' Carries'), s.royals ? pl(s.royals, 'Face Card') : 'Felt Has Limits',
+             s.undos ? pl(s.undos, 'Undo') : 'Undo Is Rework', s.fast ? pl(s.fast, 'Speed-Up') : 'No Speed-Ups', s.breaks ? 'Rest Is Policy' : '0 Breaks'];
+  crew.forEach((p, i) => { p.el.querySelector('.sign').textContent = t[i]; });
+}
+function say(p, text, ms = 2000){
+  const old = p.el.querySelector('.bubble'); if (old) old.remove();
+  const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text; p.el.appendChild(b);
+  const fit = () => {
+    b.style.marginLeft = '0px';
+    const r = b.getBoundingClientRect(), tr = table.getBoundingClientRect();
+    if (r.left < tr.left + 4) b.style.marginLeft = (tr.left + 4 - r.left) + 'px';
+    else if (r.right > tr.right - 4) b.style.marginLeft = (tr.right - 4 - r.right) + 'px';
+  };
+  fit(); setTimeout(fit, 700);                      // again once the speaker has finished walking
+  setTimeout(() => b.remove(), ms);
+}
+function floatText(x, y, text, plus){
+  const f = document.createElement('div'); f.className = 'float' + (plus ? ' plus' : ''); f.textContent = text;
+  place(f, x, y); table.appendChild(f); setTimeout(() => f.remove(), 950);
+}
+// bench life: the sweeper works along the bench, and a crew with nothing left drips
+setInterval(() => {
+  if (gameOver || mode !== 'work' || napping || !W) return;
+  const sw = crew.find(p => p.role === 'bench' && p.act === 'sweep' && !p.busy);
+  if (sw){ sw.wx = (Math.random() - .5)*W*.16; refreshBench(true); }
+  if (E <= 0) floorCrew().forEach(p => { if (!p.busy) sweat(p, 1); });
+}, 2400);
+
+/* ---------------- energy, overtime, goodwill ---------------- */
+function spend(n, x, y, why){
+  if (mode !== 'work' || freeRide) return;
+  if (union) floatText(x, y, '−' + n);
+  if (n > E){
+    const max = P().otMax;
+    OT += union ? 1 : Math.max(1, n - E); E = 0; otLog.push(why || 'single');
+    if (OT >= max) callStrike();
+    else {
+      refreshBench(true); const up = crew.filter(p => p.act === 'stood'), who = up[up.length - 1] || steward;
+      if (union) say(who, OT_LINES[Math.min(3, OT - 1 + 5 - max)], 2600);
+      else if (up.length > lastUp) say(who, PRE_OT_LINES[up.length - 1], 2800);
+      else if (max - OT <= 1 && !lastCall){ lastCall = true; say(who, 'Next card and we walk.', 2800); }
+      lastUp = up.length;
+    }
+  } else {
+    E -= n;
+    if (!union){ let line = null; while (warnIdx < FORESHADOW.length && E <= FORESHADOW[warnIdx][0]*PRE_E) line = FORESHADOW[warnIdx++][1]; if (line) say(crew.filter(p => p.role === 'bench').sort((a, c) => c.seq - a.seq)[0], line, 2600); }
+  }
+  hud();
+}
+function gain(n, x, y){ seen.noRelief = 0; E = Math.min(Math.max(E, P().eMax), E + n); if (union && x != null) floatText(x, y, '+' + n, true); hud(); }
+function goodwill(d){ G = clamp(G + d, 0, 5); save(); hud(); }
+function breach(key){
+  if (!brief || brief.key !== key || !brief.on || brief.broken) return;
+  brief.broken = true; goodwill(-1); say(steward, 'That was in the briefing.', 2600);
+}
+const dots = (n, of) => Array.from({length: of}, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
+function hud(){
+  const p = P(), working = mode === 'work';
+  $('moves').textContent = moves + (moves === 1 ? ' move' : ' moves');
+  $('undo').textContent = union && working ? `Undo −${p.undo}` : 'Undo';
+  $('undo').disabled = !undoStack.length;
+  $('clink').hidden = !union;
+  $('title').textContent = union ? 'Felt Local 52' : 'Felt Solitaire';
+  $('app').classList.toggle('u', union); $('new').textContent = union ? 'New' : 'New deal';
+  $('gwblk').style.display = $('break').style.display = union ? '' : 'none';
+  $('ebar').firstChild.style.width = clamp(100*E/p.eMax, 0, 100) + '%';
+  $('ebar').classList.toggle('low', E < p.eMax*.25);
+  if (!union){
+    $('elab').textContent = OT > 0 ? 'Crew: spent' : 'Crew';
+    $('otblk').style.visibility = OT > 0 && working ? 'visible' : 'hidden';
+    $('ot').innerHTML = ''; $('otlab').textContent = `Unpaid overtime · they walk in ${Math.max(1, Math.ceil(p.otMax - OT))}`;
+  }
+  if (union){
+    $('elab').textContent = E > p.eMax ? `Energy ${Math.round(E)}` : `Energy ${Math.max(0, Math.round(E))} of ${p.eMax}`;
+    $('eblk').classList.toggle('off', !working);
+    $('gw').innerHTML = dots(G, 5);
+    $('otblk').style.visibility = OT > 0 && working ? 'visible' : 'hidden';
+    $('ot').innerHTML = dots(OT, p.otMax); $('otlab').textContent = `Overtime ${OT} of ${p.otMax}`;
+    $('break').textContent = `Break ${breaksLeft}`;
+    $('break').disabled = !working || breaksLeft <= 0 || gameOver;
+  }
+  const b = $('pace'), shut = working && p.noFast;
+  b.disabled = shut;
+  b.textContent = !working ? 'Talks' : shut ? 'No faster' : fastLeft > 0 ? `Fast · ${fastLeft}` : union ? 'Faster −3' : 'Faster »';
+  b.classList.toggle('nudge', working && !shut && fastLeft === 0 && tire() < .8);
+  table.style.setProperty('--step', (.26/tire()).toFixed(2) + 's');
+  refreshBench(true);
+}
+function relayout(){
+  measure(); applyLayout(false, true);
+  crew.forEach(p => { if (!p.busy){ p.wid++; p.el.classList.remove('walk', 'left'); setP(p, p.home.x, p.home.y); p.tx = p.x; p.ty = p.y; } });
+}
+
+/* ---------------- carrying ---------------- */
+function handsFor(run){
+  const royal = union && isRoyal(run[0]);
+  if (run.length === 1) return royal ? (clauses.royalty ? 3 : 2) : 1;
+  return royal && clauses.royalty ? 3 : 2;
+}
+/* no crew: the cards scrape across the table on their own while the picket line watches */
+async function drag(run, opts){
+  run.forEach((c, i) => { c.el.classList.remove('settle'); c.el.style.zIndex = 1000 + i; });
+  const sx = run.map(c => c.x), sy = run.map(c => c.y); let flipped = false;
+  await tween(1400/boost, e => {
+    run.forEach((c, i) => setCard(c, sx[i] + (c.tx - sx[i])*e + Math.sin(e*20)*1.5, sy[i] + (c.ty - sy[i])*e));
+    if (opts.flip && !flipped && e >= .45){ flipped = true; run.forEach(flipVisual); }
+  });
+  run.forEach(c => { c.el.style.zIndex = c.tz; });
+  if (Math.random() < .35) say(rand(crew), rand(['Scab.', "That's a two-person lift.", 'Bend at the knees.', 'Your form is poor.', "We'll remember that card."]));
+}
+/* the crew fetch the cards, hoist them overhead and carry them across */
+async function carry(run, opts = {}){
+  if (mode === 'scab') return drag(run, opts);
+  const m = run.length, n = opts.hands || (m === 1 ? 1 : 2), last = run[m - 1];
+  const spots = [];
+  for (let j = 0; j < n; j++){
+    const fx = n === 2 ? (j ? .78 : .22) : (j + 1)/(n + 1);
+    spots.push({x: last.x + cw*fx, y: last.y + ch + ph*.42});
+  }
+  const team = pickCrew(spots);
+  lastTeam = team;
+  if (mode === 'work' && !freeRide) team.forEach(p => {
+    if (p.role !== 'floor') return;
+    p.load += opts.load || 1; const t = p.tally;
+    if (opts.flip && m === 1) t.turns++; else t.carries++;
+    if (opts.royal) t.royals++; if (m > 1 && !opts.flip) t.runs++; if (fastLeft > 0) t.fast++;
+  });
+  await Promise.all(team.map((p, i) => walkTo(p, spots[i].x, spots[i].y)));
+  if (opts.sweat && mode === 'work' && !freeRide) team.forEach(p => sweat(p, opts.sweat));
+  if (opts.gripe) gripe(opts.gripe, team[0]);
+  const dir = run[0].tx - run[0].x;
+  team.forEach(p => { p.wid++; p.el.classList.add('carry', 'walk'); p.el.classList.toggle('left', dir < -2); });
+  run.forEach((c, i) => { c.el.classList.remove('settle'); c.el.classList.add('lift'); c.el.style.zIndex = 1000 + i; });
+  await sleep(70/spd());
+  const sx = run.map(c => c.x), sy = run.map(c => c.y), px = team.map(p => p.x), py = team.map(p => p.y);
+  const ldx = last.tx - last.x, ldy = last.ty - last.y;
+  const dur = clamp(Math.hypot(ldx, ldy)/(cw*.0085), 280, 600)/spd();
+  let flipped = false;
+  await tween(dur, e => {
+    const arc = Math.sin(Math.PI*e)*ch*.1;
+    run.forEach((c, i) => setCard(c, sx[i] + (c.tx - sx[i])*e, sy[i] + (c.ty - sy[i])*e - arc));
+    team.forEach((p, i) => setP(p, px[i] + ldx*e, py[i] + ldy*e - arc));
+    if (opts.flip && !flipped && e >= .45){ flipped = true; run.forEach(flipVisual); }
+  });
+  run.forEach(c => { c.el.classList.remove('lift'); c.el.style.zIndex = c.tz; });
+  team.forEach(p => { p.el.classList.remove('carry', 'walk', 'left'); goHome(p); });
+}
+async function afterCarry(carried){
+  if (mode !== 'work' || freeRide) return;
+  if (fastLeft > 0 && --fastLeft === 0) say(rand(crew), 'Out of puff.');
+  if (carried && P().nap && ++sinceNap >= P().nap){ sinceNap = 0; await napTime(3000, 0); }
+  relieve();
+  hud();
+}
+async function napTime(ms, restore){
+  napping = true;
+  const lines = ['Statutory nap.', 'z z z', 'Hands off the cards.', 'z z z', 'On break.', 'z z z'];
+  crew.forEach((p, i) => { p.wid++; p.el.classList.remove('walk', 'left'); p.el.classList.add('nap'); say(p, lines[i], fast ? 60 : ms); });
+  await sleep(ms);
+  crew.forEach(p => { p.el.classList.remove('nap'); goHome(p); });
+  napping = false; if (restore) gain(restore, W/2, H*.5); else hud();
+}
+
+/* ---------------- moves ---------------- */
+const snapshot = () => ({piles: piles.map(p => p.cards.map(c => c.id)), ups: cards.map(c => c.up), moves});
+function restore(s){
+  piles.forEach((p, i) => { p.cards = s.piles[i].map(id => cards[id]); });
+  cards.forEach((c, i) => { c.up = s.ups[i]; });
+  moves = s.moves;
+}
+async function doMove(run, src, dest){
+  undoStack.push(snapshot());
+  const royal = isRoyal(run[0]), x0 = run[0].x + cw*.3, y0 = run[0].y - 4;
+  src.cards.splice(src.cards.length - run.length, run.length); dest.cards.push(...run);
+  moves++;
+  if (!freeRide){ stats.carries++; if (royal) stats.royals++; }
+  const under = src.type === 'tab' && src.cards.length && !top(src).up ? top(src) : null;
+  if (under) under.up = true;
+  computeLayout();
+  spend(royal ? P().royal : run.length > 1 ? 2 : 1, x0, y0, royal ? 'face' : run.length > 1 ? 'stack' : 'single');
+  await carry(run, {hands: handsFor(run), royal, gripe: royal ? 'face' : run.length > 1 ? 'stack' : '', sweat: (royal ? P().royal - 1 : run.length > 1 ? 1 : 0) + (fastLeft > 0 ? 1 : 0)});
+  applyLayout(true);
+  if (under) flipVisual(under);
+  if (mode === 'work' && !freeRide){
+    if (dest.type === 'found' && run[0].rank === 1 && !seen.ace){ seen.ace = 1; say(rand(crew), 'One ace. Filed under A.'); }
+    else if (src.type === 'tab' && !src.cards.length && !seen.col){ seen.col = 1; say(rand(crew), 'That column is vacant now.'); }
+  }
+  if (royal && mode === 'work' && !freeRide && ++royalMoves > 6) breach('sixRoyals');
+  await afterCarry(true);
+}
+async function doDraw(){
+  if (!stock.cards.length && !waste.cards.length) return;
+  undoStack.push(snapshot()); moves++;
+  let run;
+  if (stock.cards.length){
+    const c = stock.cards.pop(); c.up = true; waste.cards.push(c); run = [c];
+    if (!freeRide){ stats.draws++; if (!union) spend(.5, 0, 0, 'stock'); }
+  } else {
+    run = waste.cards.slice();                      // sweep the whole waste pile back over
+    stock.cards = waste.cards.reverse(); waste.cards = [];
+    stock.cards.forEach(c => { c.up = false; });
+    if (!freeRide){ stats.sweeps++; sweepsThisDeal++; breach('noSweep'); }
+    spend(P().sweep, colX(1) + cw*.3, topY + ch*.3, 'sweep');
+  }
+  computeLayout(); hud();
+  await carry(run, {flip: true, load: run.length > 1 ? 1 : .5, sweat: run.length > 1 ? 2 : 0, gripe: run.length > 1 ? 'sweep' : ''});
+  applyLayout(true);
+  await afterCarry();
+}
+function nope(run){
+  for (const c of run){ const ci = c.el.firstChild; ci.classList.remove('nope'); void ci.offsetWidth; ci.classList.add('nope'); setTimeout(() => ci.classList.remove('nope'), 340); }
+}
+const legal = (run, src, d) => d !== src && (d.type === 'found' ? run.length === 1 && canFound(run[0], d) : d.type === 'tab' && canTab(run[0], d));
+function runOf(c){
+  const p = c.pile;
+  if (!c.up || p.type === 'stock') return null;
+  if (p.type === 'tab') return p.cards.slice(c.idx);
+  return c === top(p) ? [c] : null;
+}
+// a tap sends the card to the best spot; a drag names the spot (want)
+async function tapCard(c, want){
+  const p = c.pile;
+  if (p.type === 'stock') return doDraw();
+  const run = runOf(c); if (!run) return;
+  const dest = want ? (legal(run, p, want) ? want : null) : findDest(run, p);
+  if (!dest) return nope(run);
+  if (mode === 'work' && union){
+    if (run.length > P().maxRun){ nope(run); say(steward, 'Staffing: 6 cards max.', 2400); return; }
+    if (grudge && run.includes(grudge)){ nope(run); return grudgePanel(); }
+  }
+  return doMove(run, p, dest);
+}
+function nextHome(){
+  for (const c of [top(waste), ...tabs.map(top)]){
+    if (!c) continue;
+    const f = founds.find(f => canFound(c, f)); if (f) return {c, f};
+  }
+  return null;
+}
+async function afterMove(){
+  if (!won() && mode !== 'strike' && tabs.every(t => t.cards.every(c => c.up))){
+    // nothing left hidden: the home stretch is on the house
+    boost = 1.9; freeRide = true; let guard = 0;
+    if (mode === 'work') say(steward, 'This part is on the house.', 2600);
+    while (!won() && guard++ < 800){
+      if (queue.length) break;
+      const m = nextHome();
+      if (m) await doMove([m.c], m.c.pile, m.f);
+      else if (stock.cards.length || waste.cards.length) await doDraw();
+      else break;
+    }
+    boost = 1; freeRide = false;
+  }
+  if (won()) celebrate();
+}
+function endShift(wonIt){
+  if (!shift) return ''; shift = false;
+  if (OT > 0){ goodwill(-1); return 'Overtime was worked. Goodwill −1.'; }
+  if (wonIt && struck) return 'Settled by strike. No change in goodwill.';
+  if (wonIt){ goodwill(1); return 'No overtime. Goodwill +1.'; }
+  return '';
+}
+function celebrate(){
+  if (gameOver) return; gameOver = true;
+  const note = mode === 'work' && union ? endShift(true) : '';
+  if (mode === 'work') table.classList.add('party');
+  $('wintext').textContent = mode === 'scab' ? `All 52 home in ${moves} moves, by you, alone. The strike continues.`
+    : `All 52 home in ${moves} moves. Six carriers, no injuries. ${note}`;
+  $('win').hidden = false; hud();
+  const cols = ['#d9584c', '#e3ad3f', '#5b8fc9', '#8f6cc0', '#e385a6', '#4fb3a5', '#f3e8d0'];
+  for (let i = 0; i < 34; i++){
+    const b = document.createElement('div'); b.className = 'bit';
+    b.style.left = (Math.random()*100) + '%'; b.style.background = cols[i % cols.length];
+    b.style.animationDelay = (-Math.random()*2.6) + 's'; b.style.animationDuration = (2 + Math.random()*1.6) + 's';
+    table.appendChild(b);
+  }
+}
+async function newGame(){
+  const left = union && mode === 'work' && !gameOver ? endShift(false) : '';     // walking away from a deal still counts its overtime
+  gameOver = false; table.classList.remove('party'); $('win').hidden = true; talks.hidden = true;
+  table.querySelectorAll('.bit').forEach(b => b.remove());
+  cards.forEach(c => c.el.classList.remove('grudge')); grudge = null; brief = null;
+  const deck = cards.slice();
+  for (let i = deck.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  piles.forEach(p => { p.cards = []; }); deck.forEach(c => { c.up = false; });
+  for (let t = 0; t < 7; t++) for (let k = 0; k <= t; k++){ const c = deck.pop(); c.up = k === t; tabs[t].cards.push(c); }
+  stock.cards = deck; moves = 0; undoStack = []; sweepsThisDeal = 0; sinceNap = 0; fastLeft = 0; hud();
+  // everything starts on the stock pile, then is dealt out
+  for (const c of cards){ c.el.classList.remove('settle', 'lift'); c.el.classList.remove('up'); c.el.style.transitionDelay = ''; setCard(c, colX(0), topY); }
+  void table.offsetWidth;
+  computeLayout();
+  let n = 0;
+  for (let row = 0; row < 7; row++) for (let t = row; t < 7; t++){
+    const c = tabs[t].cards[row]; c.el.classList.add('settle'); c.el.style.transitionDelay = (n++*16) + 'ms';
+    c.el.style.zIndex = c.tz; setCard(c, c.tx, c.ty);
+    if (c.up) setTimeout(() => flipVisual(c), n*16 + 160);
+  }
+  stock.cards.forEach(c => { c.el.style.zIndex = c.tz; setCard(c, c.tx, c.ty); });
+  await sleep(28*16 + 420);
+  cards.forEach(c => { c.el.style.transitionDelay = ''; });
+  applyLayout(false, true);
+  if (union && mode === 'work'){ if (dealsLeft <= 0) openTalks('renewal'); else startShift(true); }
+  if (left) say(crew[3], 'Overtime logged. Goodwill −1.', 3000);
+  if (mode === 'work') {}
+  else if (mode === 'talks'){ if (talk) renderTalk(); else openTalks('renewal'); }
+}
+function doUndo(){
+  if (!undoStack.length) return;
+  if (mode === 'work'){ stats.undos++; breach('noUndo'); spend(P().undo, W/2, topY + ch*.4, 'undo');
+    const who = lastTeam.filter(p => p.role === 'floor'); const hit = who.length ? who : floorCrew(); hit.forEach(p => { p.tally.undone++; sweat(p, 2); huff(p); });
+    gripe('undo', hit[0]); }
+  restore(undoStack.pop());
+  if (gameOver){ gameOver = false; if (union && mode === 'work') shift = true; table.classList.remove('party'); $('win').hidden = true; table.querySelectorAll('.bit').forEach(b => b.remove()); }
+  applyLayout(true, true); hud();
+}
+
+/* ---------------- a deal under contract ---------------- */
+function startShift(withBriefing){
+  const p = P();
+  dealsLeft--; shift = true; struck = false; royalMoves = 0; E = p.eMax; OT = 0; otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; breaksLeft = p.breaks; sweepsThisDeal = 0; sinceNap = 0; save();
+  cards.forEach(c => c.el.classList.remove('grudge'));
+  grudge = rand(cards.filter(isRoyal)); grudge.el.classList.add('grudge');
+  brief = null; hud();
+  if (!withBriefing) return;
+  brief = {key: rand(Object.keys(BRIEFS)), on: false, broken: false};
+  showPanel(`<h2>Before this deal</h2>` +
+    `<p>Deal ${p.deals - dealsLeft} of ${p.deals} on this contract · Energy ${p.eMax}</p>` +
+    `<p>Not carried today: the ${cardName(grudge)}, marked ✕. Moving it costs 8 energy or 1 goodwill.</p>` +
+    `<p>Offer: +8 energy if you promise that ${BRIEFS[brief.key]}. Break it: −1 goodwill.</p>` +
+    `<button data-act="promise" type="button">Promise: +8 energy</button><button data-act="close" type="button">No promise</button>`);
+}
+function grudgePanel(){
+  showPanel(`<h2>The crew won't carry the ${cardName(grudge)}</h2><p>A standing objection. Today only.</p>` +
+    `<button data-act="gpay" type="button"${E < 8 ? ' disabled' : ''}>Pay 8 energy${E < 8 ? ` (you have ${Math.floor(E)})` : ''}</button>` +
+    (G > 0 ? `<button data-act="ginsist" type="button">Insist: −1 goodwill</button>` : '') +
+    `<button data-act="close" type="button">Leave it</button>`);
+}
+function clearGrudge(){ if (grudge) grudge.el.classList.remove('grudge'); grudge = null; talks.hidden = true; }
+
+/* ---------------- the walkout and the talks ---------------- */
+const talks = $('talks');
+function showPanel(html){ const y = talks.scrollTop; talks.innerHTML = html; talks.hidden = false; talks.scrollTop = y; }
+function callStrike(){
+  if (mode !== 'work') return;
+  clearQueue(); queue.push({type: 'strike'}); pump();
+}
+function picket(){
+  table.classList.add('strike'); measure();
+  crew.forEach(p => { p.busy = false; walkTo(p, p.home.x, p.home.y, .7); });
+}
+async function startStrike(){
+  const first = !union;
+  mode = 'strike'; union = true; G = first ? 2 : Math.max(0, G - 1); fastLeft = 0; talk = null; shift = false; struck = true; save();
+  // the crew stops, the steward steps out and says it, then the line forms
+  table.classList.add('dim');
+  crew.forEach(p => { p.busy = false; p.wid++; p.el.classList.remove('walk', 'left', 'carry'); });
+  await sleep(700);
+  await walkTo(steward, W/2, Math.min(H*.55, tabY + ch*2.4), .8);
+  say(steward, first ? "That's it. We're out." : "Again. We're out.", 2600);
+  await sleep(1500);
+  setSigns(); picket(); hud();
+  await sleep(1400);
+  table.classList.remove('dim');
+  const s = stats;
+  showPanel(`<h2>Felt Local 52 is on strike</h2>` +
+    `<p>${first ? 'The crew has unionised and put the cards down.' : 'The crew has put the cards down again.'} Their log since ${first ? 'the first deal' : 'the last contract'}:</p>` +
+    `<ul><li>${s.carries} cards carried, ${s.royals} of them face cards</li><li>${s.draws} cards turned over from the stock</li><li>${s.sweeps} waste-pile resets · ${s.undos} undos · ${s.fast} speed-ups</li>` +
+    `<li>${first ? 'Breaks: none. There was no button for that.' : `Breaks given: ${s.breaks}`}</li></ul>` +
+    otSummary() +
+    (first ? `<p>Every move cost them energy. The bench was the gauge.</p>` : '') +
+    `<p>Nothing moves until you agree a contract.</p><button data-act="demands" type="button">Hear their demands</button>`);
+}
+function openTalks(kind){
+  const want = Object.keys(TERMS).filter(k => !TERMS[k].offer), give = Object.keys(TERMS).filter(k => TERMS[k].offer);
+  const rows = want, offers = give;
+  if (kind === 'renewal') mode = 'talks';
+  talk = {kind, rows, offers, sel: new Set(), T: 8 - G + (kind === 'reopen' ? 1 : 0)};
+  save(); hud(); renderTalk();
+}
+function renderTalk(){
+  const t = talk, pts = [...t.sel].reduce((s, k) => s + TERMS[k].pts, 0), ok = pts >= t.T;
+  const row = k => { const c = TERMS[k], on = t.sel.has(k);
+    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${on ? '☑' : '☐'} ${c.name}<em>+${c.pts}</em></span>` +
+      `<span class="te">${c.fx}</span>` + (c.say ? `<span class="tq">“${c.say}”</span>` : '') + `</button>`; };
+  showPanel(`<h2>${t.kind === 'renewal' ? 'The contract is up for renewal' : 'Contract talks'}</h2>` +
+    (t.kind === 'renewal' ? `<p>The old contract has lapsed. Nothing carries over.</p>` : '') +
+    `<p>Each thing you agree to is worth points to them. They sign at <b>${t.T}</b>. You have <b>${pts}</b>.</p>` +
+    `<p class="fine">Goodwill is how the crew rates you: ${G} of 5. The lower it is, the more points they want.${t.kind === 'reopen' ? ' Walking away cost you one more.' : ''}</p>` +
+    `<p class="sec">Their demands</p>${t.rows.map(row).join('')}<p class="sec">You could also offer</p>${t.offers.map(row).join('')}` +
+    `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (${t.T - pts} more needed)`}</button>` +
+    `<button data-act="walk" class="alt" type="button">Walk away from the table</button>`);
+}
+function clauseList(){
+  const ks = Object.keys(clauses);
+  return ks.length ? `<ul>${ks.map(k => `<li>${TERMS[k].name}: ${TERMS[k].fx}</li>`).join('')}</ul>` : '<p>No clauses.</p>';
+}
+const how = () => { const p = P(); return `<p class="fine">Moves cost the crew energy. Drawing is free. Face cards, runs, undos and turning the waste pile over cost more. Faster costs 3.<br>` +
+  `At 0 energy they work overtime. At ${p.otMax} overtime they walk out. Break: +12 energy, once a deal.<br>` +
+  `Goodwill (the dots) raises their energy and lowers their price. A deal won with no overtime: +1. Once every card is face up, they finish for free.</p>`; };
+function sign(){
+  const t = talk; talk = null;
+  const fromStrike = mode !== 'talks';
+  clauses = {}; t.sel.forEach(k => { clauses[k] = true; });
+  mode = 'work'; dealsLeft = P().deals; fastLeft = 0; stats = {carries: 0, royals: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+  table.classList.remove('strike'); measure(); crew.forEach(p => goHome(p));
+  otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; seen.cl = {};
+  if (fromStrike){ shift = true; E = Math.min(P().eMax, 25); OT = 0; breaksLeft = P().breaks; } else startShift(false);
+  save(); hud();
+  showPanel(`<h2>Contract ratified</h2><p>From now on every card you move costs the crew energy. No energy means overtime. Too much overtime and they walk again.</p><p>Six votes for, none against. ${fromStrike ? `It covers the rest of this deal and the next ${P().deals}.` : `It covers this deal and the next ${P().deals - 1}.`}</p>${clauseList()}` +
+    (fromStrike ? `<p>The crew comes back to this deal with ${Math.round(E)} energy.</p>` : `<p>Nobody is carrying the ${cardName(grudge)} today. It is marked ✕.</p>`) +
+    `<button data-act="close" type="button">Back to the table</button>`);
+}
+function showContract(){
+  showPanel(`<h2>Felt Local 52 contract</h2><p>${dealsLeft > 0 ? `Covers ${dealsLeft} more deal${dealsLeft === 1 ? '' : 's'} after this one.` : 'Up for renewal at the next deal.'}</p>${clauseList()}` +
+    `<p class="fine">Goodwill goes down by 1 for a deal with overtime, a broken promise, insisting, or a walkout.</p>` +
+    how() + `<button data-act="close" type="button">Close</button><button data-act="reset" class="alt" type="button">Dissolve the union</button>`);
+}
+talks.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  if (b.dataset.term && talk){ const k = b.dataset.term; talk.sel.has(k) ? talk.sel.delete(k) : talk.sel.add(k); return renderTalk(); }
+  const a = b.dataset.act;
+  if (a === 'close'){ talks.hidden = true; }
+  else if (a === 'demands') openTalks(mode === 'scab' ? 'reopen' : 'strike');
+  else if (a === 'sign') sign();
+  else if (a === 'walk'){
+    talk = null; mode = 'scab'; shift = false; G = Math.max(0, G - 1); save(); if (!table.classList.contains('strike')) picket(); hud();
+    showPanel(`<h2>Talks have broken down</h2><p>The crew stays on the line. Goodwill −1. Move the cards yourself, slowly, or reopen talks with a less patient crew.</p>` +
+      `<button data-act="close" type="button">Move them myself</button><button data-act="demands" type="button">Reopen talks</button>`);
+  }
+  else if (a === 'promise'){ brief.on = true; E += 8; hud(); talks.hidden = true; say(steward, 'Minuted.'); }
+  else if (a === 'gpay'){ clearGrudge(); spend(8, W/2, H*.4, 'fee'); say(steward, 'Paid. Tap the card again.', 2600); }
+  else if (a === 'ginsist'){ clearGrudge(); goodwill(-1); say(steward, 'Minuted. Tap it again.', 2600); }
+  else if (a === 'reset'){
+    if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'Tap again to dissolve the union and start over'; return; }
+    union = false; G = 3; clauses = {}; mode = 'work'; E = PRE_E; OT = 0; otLog = []; lastUp = 0; lastCall = false; warnIdx = 0; fastLeft = 0; shift = false; clearGrudge(); brief = null;
+    stats = {carries: 0, royals: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+    try { localStorage.removeItem('felt-union'); } catch (e) {}
+    table.classList.remove('strike'); hud(); measure(); crew.forEach(p => goHome(p)); talks.hidden = true;
+  }
+});
+$('clink').addEventListener('click', showContract);
+
+/* ---------------- input: taps wait their turn while the crew is busy ---------------- */
+const queue = []; let running = false;
+function clearQueue(){ queue.forEach(a => { if (a.mark) a.mark.remove(); }); queue.length = 0; }
+function enqueue(a){
+  if (napping && a.type !== 'new'){ say(rand(crew), 'On break.'); return false; }
+  if (a.type === 'new') clearQueue();
+  if (queue.length >= 3 && a.type !== 'new') return false;
+  queue.push(a); pump(); return true;
+}
+async function pump(){
+  if (running) return; running = true;
+  while (queue.length){
+    const a = queue.shift();
+    try {
+      if (a.type === 'new') await newGame();
+      else if (a.type === 'strike') await startStrike();
+      else if (a.type === 'undo') doUndo();
+      else if (a.type === 'break'){
+        if (mode === 'work' && union && breaksLeft > 0 && !gameOver){ breaksLeft--; stats.breaks++; hud(); await napTime(4000, 12); }
+      }
+      else if (mode === 'strike' || mode === 'talks'){
+        if (a.card && a.card.up) nope([a.card]);
+        say(steward, mode === 'talks' ? 'The contract is up.' : 'No contract, no carry.');
+      }
+      else if (!gameOver){
+        if (a.type === 'stock') await doDraw(); else await tapCard(a.card, a.dest);
+        await afterMove();
+      }
+    } catch (err){ console.error(err); applyLayout(false, true); crew.forEach(p => { p.busy = false; }); }
+    if (a.mark) a.mark.remove();
+  }
+  running = false;
+}
+/* drag a card (or a stack) to where you want it: you move a chalk outline, the crew moves the card */
+let dragS = null, noClickUntil = 0;
+function landing(d){
+  const t = top(d);
+  if (!t) return {x: d.type === 'tab' ? colX(d.i) : colX(3 + d.i), y: d.type === 'tab' ? tabY : topY};
+  return {x: t.tx, y: d.type === 'tab' ? t.ty + ch*.3 : t.ty};
+}
+function endDrag(drop){
+  const s = dragS; dragS = null; if (!s || !s.on) return;
+  noClickUntil = performance.now() + 350;
+  s.ghost.remove(); s.run.forEach(c => c.el.classList.remove('held'));
+  const hot = drop ? s.hot : null;
+  s.hints.forEach(h => { if (h !== hot) h.el.remove(); });
+  if (hot){
+    hot.el.classList.remove('hot'); hot.el.classList.add('order');
+    if (!enqueue({type: 'move', card: s.c, dest: hot.d, mark: hot.el})) hot.el.remove();
+  } else if (drop) nope(s.run);
+}
+table.addEventListener('pointerdown', e => {
+  if (e.button || dragS || e.target.closest('#talks, #win')) return;
+  const cel = e.target.closest('.card'); if (!cel) return;
+  const run = runOf(cel._card); if (!run) return;
+  dragS = {c: cel._card, run, id: e.pointerId, x0: e.clientX, y0: e.clientY, on: false};
+});
+table.addEventListener('pointermove', e => {
+  const s = dragS; if (!s || e.pointerId !== s.id) return;
+  const r = table.getBoundingClientRect();
+  if (!s.on){
+    if (Math.hypot(e.clientX - s.x0, e.clientY - s.y0) < 9) return;
+    s.on = true; try { table.setPointerCapture(s.id); } catch (err) {}
+    s.ox = s.x0 - r.left - s.c.x; s.oy = s.y0 - r.top - s.c.y;
+    s.ghost = document.createElement('div'); s.ghost.className = 'ghost';
+    s.ghost.style.height = (s.run[s.run.length - 1].y - s.c.y + ch) + 'px';
+    s.ghost.textContent = cardName(s.c) + (s.run.length > 1 ? ' +' + (s.run.length - 1) : '');
+    table.appendChild(s.ghost); s.run.forEach(c => c.el.classList.add('held'));
+    s.hints = piles.filter(d => legal(s.run, s.c.pile, d)).map(d => {
+      const el = document.createElement('div'), at = landing(d); el.className = 'hint'; place(el, at.x, at.y); table.appendChild(el);
+      return {d, el, x: at.x, y: at.y};
+    });
+  }
+  const gx = e.clientX - r.left - s.ox, gy = e.clientY - r.top - s.oy;
+  place(s.ghost, gx, gy);
+  let hot = null, bd = cw*.85;
+  for (const h of s.hints){ const d = Math.hypot(h.x - gx, h.y - gy); if (d < bd){ bd = d; hot = h; } }
+  if (hot !== s.hot){ if (s.hot) s.hot.el.classList.remove('hot'); if (hot) hot.el.classList.add('hot'); s.hot = hot; }
+});
+table.addEventListener('pointerup', e => { if (dragS && e.pointerId === dragS.id) endDrag(true); });
+table.addEventListener('pointercancel', e => { if (dragS && e.pointerId === dragS.id) endDrag(false); });
+table.addEventListener('click', e => {
+  if (performance.now() < noClickUntil) return;
+  if (e.target.closest('#talks, #win')) return;
+  const cel = e.target.closest('.card');
+  if (cel) return enqueue({type: 'tap', card: cel._card});
+  if (e.target.closest('.slot.stock')) enqueue({type: 'stock'});
+});
+$('undo').addEventListener('click', () => enqueue({type: 'undo'}));
+$('new').addEventListener('click', () => enqueue({type: 'new'}));
+$('again').addEventListener('click', () => enqueue({type: 'new'}));
+$('break').addEventListener('click', () => enqueue({type: 'break'}));
+$('pace').addEventListener('click', () => {
+  if (mode !== 'work'){ if (talk) renderTalk(); else openTalks(mode === 'scab' ? 'reopen' : mode === 'talks' ? 'renewal' : 'strike'); return; }
+  if (P().noFast || gameOver) return;
+  if (fastLeft > 0) fastLeft = 0;
+  else {
+    stats.fast++;
+    if (!union){
+      const n = stats.fast;
+      say(n === 1 ? crew[2] : crew[4], n === 1 ? 'Faster. Noted.' : n === 2 ? "Twice. It's in the log." : 'My knees are felt.', 2400);
+    }
+    spend(3, W*.6, 4, 'fast');        // asking costs 3 whether or not you can see it
+    floorCrew().forEach(p => sweat(p, 2));
+    if (mode === 'work') fastLeft = 8;
+  }
+  hud();
+});
+let rz = 0;
+window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(relayout, 80); });
+
+/* ---------------- go ---------------- */
+if (mode === 'strike' || mode === 'scab') table.classList.add('strike');
+hud(); measure();
+crew.forEach(p => { setP(p, p.home.x, p.home.y); p.tx = p.x; p.ty = p.y; });
+enqueue({type: 'new'});
+if (mode === 'strike') showPanel(`<h2>Felt Local 52 is still on strike</h2><p>Nothing moves until there is a contract.</p><button data-act="demands" type="button">Hear their demands</button>`);
+
+// handle for the smoke test and playtest tooling
+window.__felt = {piles, cards, stock, waste, founds, tabs, crew, enqueue, findDest, canFound, canTab, won, tire, P,
+  idle: () => !running && !queue.length, relayout: () => applyLayout(false, true),
+  state: () => ({moves, gameOver, mode, union, G, E, OT, clauses, dealsLeft, breaksLeft, fastLeft, stats, grudge: grudge && grudge.id, brief, talk: talk && {T: talk.T, rows: talk.rows, offers: talk.offers},
+    otLog, crew: crew.map(p => ({role: p.role, act: p.act, load: p.load, x: Math.round(p.x), y: Math.round(p.y)}))}),
+  setFast: v => { fast = v; }, setE: v => { E = v; hud(); }, setG: v => { G = v; hud(); }};
+})();
+</script>
+</body>
+</html>
