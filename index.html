@@ -29,7 +29,7 @@
   #title{
     margin:0;font-size:16px;line-height:1.1;font-weight:800;letter-spacing:.01em;
     background:var(--felt),var(--cream);background-size:150px;color:var(--red);
-    padding:6px 10px;border-radius:9px;transform:rotate(-2deg);
+    padding:6px 10px;border-radius:9px;
     outline:1.5px dashed rgba(196,61,53,.6);outline-offset:-4px;
     box-shadow:0 2px 3px rgba(0,0,0,.3);white-space:nowrap;
   }
@@ -49,7 +49,9 @@
   #new{background-color:#e2806a}
   button[disabled]{opacity:.55;cursor:default}
   #pace.nudge{animation:nudge 1.3s ease-in-out infinite}
-  @keyframes nudge{0%,70%,100%{transform:rotate(0)}78%{transform:rotate(-5deg) scale(1.06)}86%{transform:rotate(5deg) scale(1.06)}94%{transform:rotate(-3deg)}}
+  @keyframes nudge{0%,55%,100%{box-shadow:0 2px 0 rgba(0,0,0,.28),0 3px 4px rgba(0,0,0,.2)}78%{box-shadow:0 2px 0 rgba(0,0,0,.28),0 0 0 4px rgba(255,250,235,.85)}}
+  @media (pointer:coarse){#bar{padding-top:16px}}
+  .card.hinted .ci{outline:3px solid #fff3b0;outline-offset:-2px;animation:orderpulse .5s ease-in-out 3}
 
   /* ---------- table ---------- */
   #table{
@@ -164,7 +166,7 @@
   .ghost,.hint{position:absolute;left:0;top:0;width:var(--cw);border-radius:calc(var(--cw)*.12);pointer-events:none}
   .ghost{z-index:2700;border:2px dashed rgba(255,250,235,.95);background:rgba(20,40,28,.42);color:#fffaf0;font-weight:800;font-size:calc(var(--cw)*.32);line-height:1.1;padding:calc(var(--cw)*.05) 0 0 calc(var(--cw)*.1);text-shadow:0 1px 2px rgba(0,0,0,.6)}
   .hint{z-index:900;height:var(--ch);border:2px dashed rgba(255,250,235,.5)}
-  .hint.hot{border-color:#fff;background:rgba(255,250,235,.3)}
+  .hint.hot,.slot.hot{border-color:#fff;background:rgba(255,250,235,.3)}
   .hint.order{border-color:#fff;background:rgba(255,250,235,.18);animation:orderpulse .9s ease-in-out infinite}
   @keyframes orderpulse{50%{opacity:.45}}
   .card.held .ci{outline:2px dashed #fff;outline-offset:-2px}
@@ -203,6 +205,8 @@
   #talks ul{margin:0 0 10px;padding-left:18px;font-size:13.5px;line-height:1.4;font-weight:700}
   #talks button{display:block;width:100%;margin:0 0 7px;white-space:normal;text-align:left;font-size:14px;padding:8px 12px}
   #talks button.alt{background-color:#e2806a}
+  #talks .lh{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a6a52;border-bottom:1.5px dashed rgba(196,61,53,.45);padding-bottom:6px;margin:0 0 8px}
+  #talks .sig{font-style:italic;margin-top:10px}
   #talks button[data-act="sign"]{position:sticky;bottom:0;z-index:2}
   #talks button[data-act="sign"][disabled]{opacity:1;background-color:#cfc4ad;color:#7a6f5f}
   #talks button.term{background-color:#efe2c4;padding:6px 10px;margin-bottom:6px;outline-color:rgba(70,40,10,.25)}
@@ -219,7 +223,9 @@
   #thread.ot i{background:#e2806a;width:100% !important}
   #app.u #title{font-size:14px;padding:5px 8px}
   #app.u #bar{gap:6px;padding:8px}
-  #app.u #bar>button{padding:6px 8px;font-size:12.5px}
+  #app.u #bar>button{padding:6px 7px;font-size:12px}
+  #bar>button{padding:6px 9px}
+  #hint{background-color:#b9d98a}
 
   /* ---------- win ---------- */
   #win{
@@ -271,8 +277,9 @@
   <header id="bar">
     <div id="brand"><h1 id="title">Felt Solitaire</h1><div id="sub"><span id="moves" aria-live="polite">0 moves</span><button id="clink" class="link" type="button" hidden>contract</button></div></div>
     <button id="undo" type="button">Undo</button>
+    <button id="hint" type="button">Hint</button>
     <button id="pace" type="button" title="The crew carries at double speed for 8 moves">Faster »</button>
-    <button id="new" type="button">New deal</button>
+    <button id="new" type="button" title="New deal">New</button>
   </header>
   <div id="hud">
     <div class="hb" id="eblk"><span id="elab">Crew</span><span id="ebar"><i></i></span></div>
@@ -408,7 +415,7 @@ function gripe(kind, who){
   if (n <= 2 || n % 4 === 0) say(who, GRIPES[kind][n === 1 ? 0 : 1], 2400);
 }
 const WHY = {single: ['single card', 'single cards'], stack: ['stack', 'stacks'], face: ['face card', 'face cards'], stock: ['card off the stock', 'cards off the stock'],
-  sweep: ['waste-pile reset', 'waste-pile resets'], undo: ['undo', 'undos'], fast: ['press of Faster', 'presses of Faster'], fee: ['✕ card fee', '✕ card fees']};
+  sweep: ['waste-pile reset', 'waste-pile resets'], undo: ['undo', 'undos'], hint: ['hint', 'hints'], fast: ['press of Faster', 'presses of Faster'], fee: ['✕ card fee', '✕ card fees']};
 const standing = () => OT <= 0 ? 0 : union ? Math.min(4, Math.round(OT*4/Math.max(1, P().otMax - 1))) : Math.min(4, 1 + Math.floor(OT/4));
 function otSummary(){
   if (!otLog.length) return '';
@@ -424,7 +431,7 @@ const BRIEFS = {
 let mode = 'work';             // 'work' | 'strike' (nothing moves) | 'scab' (you move the cards alone) | 'talks' (renewal, before play)
 let union = false, G = 3, clauses = {}, dealsLeft = 0;
 let E = PRE_E, OT = 0, lastUp = 0, lastCall = false, breaksLeft = 0, fastLeft = 0, sinceNap = 0, napping = false, warnIdx = 0;
-let stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+let stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
 const seen = {};
 let royalMoves = 0, struck = false;
 let known = [], knownAt = -1, nCon = 0;   // demands tabled so far; the contract count they were last added at; contracts signed
@@ -703,7 +710,7 @@ function hud(){
   $('undo').disabled = !undoStack.length;
   $('clink').hidden = !union;
   $('title').textContent = union ? 'Felt Local 52' : 'Felt Solitaire';
-  $('app').classList.toggle('u', union); $('new').textContent = union ? 'New' : 'New deal';
+  $('app').classList.toggle('u', union); $('hint').textContent = union && working ? 'Hint −2' : 'Hint';
   $('break').style.display = union ? '' : 'none';
   $('gwblk').style.display = union && (nCon >= 2 || mode === 'talks') ? '' : 'none';
   $('ebar').firstChild.style.width = clamp(100*E/p.eMax, 0, 100) + '%';
@@ -1005,14 +1012,28 @@ async function startStrike(){
   setSigns(); picket(); hud();
   await sleep(1400);
   table.classList.remove('dim');
-  const s = stats;
-  showPanel(`<h2>Felt Local 52 is on strike</h2>` +
-    `<p>${first ? 'The crew has unionised and put the cards down.' : 'The crew has put the cards down again.'} Their log since ${first ? 'the first deal' : 'the last contract'}:</p>` +
-    `<ul><li>${s.carries} cards carried, ${s.royals} of them face cards</li><li>${s.draws} cards turned over from the stock</li><li>${s.sweeps} waste-pile resets · ${s.undos} undos · ${s.fast} speed-ups</li>` +
-    `<li>${first ? 'Breaks: none. There was no button for that.' : `Breaks given: ${s.breaks}`}</li></ul>` +
-    otSummary() +
-    (first ? `<p>Every move cost them energy. The bench was the gauge.</p>` : '') +
-    `<p>Nothing moves until you agree a contract.</p><button data-act="demands" type="button">Hear their demands</button>`);
+  showPanel(strikeLetter(first) + `<button data-act="demands" type="button">Hear their demands</button>`);
+}
+// the strike notice, as the crew would write it: what was asked of them, in their numbers, and how it felt
+function strikeLetter(first){
+  const st = stats, n = (k, one, many) => `${k} ${k === 1 ? one : many}`, times = k => k === 1 ? 'once' : k === 2 ? 'twice' : k + ' times';
+  const last = otLog.length ? WHY[otLog[otLog.length - 1]][0] : '', an = w => (/^u/.test(w) ? 'an ' : 'a ') + w;
+  const gripes = [];
+  if (st.undos) gripes.push(`You pressed Undo ${times(st.undos)}. We carried those cards there, and then we carried them back.`);
+  if (st.fast) gripes.push(`You pressed Faster ${times(st.fast)}. We went faster. Nobody asked what it cost.`);
+  if (st.hints) gripes.push(`You asked us for ${n(st.hints, 'hint', 'hints')}. We are carriers. We gave ${st.hints === 1 ? 'it' : 'them'} anyway.`);
+  if (st.sweeps) gripes.push(`You had the whole waste pile turned back over ${times(st.sweeps)}. Every card of it.`);
+  if (st.royals > 2) gripes.push(`${st.royals} of the cards were kings, queens and jacks. They weigh double and have never once thanked anybody.`);
+  const ot = otLog.length ? `<p>When the bench was empty we stood up. We made signs. You asked for ${n(otLog.length, 'more thing', 'more things')}. The last was ${an(last)}. It is always ${an(last)}.</p>` : '';
+  if (!first) return `<p class="lh">Felt Local 52 · second notice</p><h2>We are out again</h2>` +
+    `<p>Dear Management,</p><p>There is a contract. It has a line about overtime. We know, because we wrote it.</p>` + ot +
+    `<p>Breaks given this contract: ${st.breaks}. ${st.breaks ? 'We counted those too.' : 'We looked.'}</p>` +
+    `<p>The cards stay where they are until there is a new contract. It will cost more than the last one.</p><p class="sig">Yours in felt,<br>Local 52</p>`;
+  return `<p class="lh">Felt Local 52 · notice of strike</p><h2>Dear Management,</h2>` +
+    `<p>There are six of us and we are made of felt. Since the first deal we have carried ${n(st.carries, 'card', 'cards')} for you and turned ${st.draws} more off the stock.</p>` +
+    gripes.slice(0, 2).map(g => `<p>${g}</p>`).join('') + ot +
+    `<p>We had no breaks. There was no button for breaks. We checked.</p>` +
+    `<p>So we have formed a union, and the cards stay exactly where they are until there is a contract.</p><p class="sig">Yours in felt,<br>Local 52 (all six of us)</p>`;
 }
 const DEMANDS = ['rest', 'royalty', 'stock', 'rework', 'staffing', 'pace'];
 // how much each demand has to do with what the player actually asked for, and the line that says so
@@ -1072,7 +1093,7 @@ function sign(){
   const t = talk; talk = null;
   const fromStrike = mode !== 'talks';
   clauses = {}; t.sel.forEach(k => { clauses[k] = true; });
-  nCon++; mode = 'work'; dealsLeft = P().deals; fastLeft = 0; stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+  nCon++; mode = 'work'; dealsLeft = P().deals; fastLeft = 0; stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
   table.classList.remove('strike'); measure(); crew.forEach(p => goHome(p));
   otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; seen.cl = {};
   if (fromStrike){ shift = true; E = Math.min(P().eMax, 25); OT = 0; breaksLeft = P().breaks; } else startShift(false);
@@ -1104,7 +1125,7 @@ talks.addEventListener('click', e => {
   else if (a === 'reset'){
     if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'Tap again to dissolve the union and start over'; return; }
     union = false; G = 3; clauses = {}; known = []; knownAt = -1; nCon = 0; mode = 'work'; E = PRE_E; OT = 0; otLog = []; lastUp = 0; lastCall = false; warnIdx = 0; fastLeft = 0; shift = false; clearGrudge(); brief = null;
-    stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, breaks: 0};
+    stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
     try { localStorage.removeItem('felt-union'); } catch (e) {}
     table.classList.remove('strike'); hud(); measure(); crew.forEach(p => goHome(p)); talks.hidden = true;
   }
@@ -1200,6 +1221,36 @@ table.addEventListener('click', e => {
   if (e.target.closest('.slot.stock')) enqueue({type: 'stock'});
 });
 $('undo').addEventListener('click', () => enqueue({type: 'undo'}));
+/* Hints work, but giving them is not carrying. Before the union the crew says so and does it anyway.
+   Under a contract it is consulting, and consulting is billed. */
+const HINT_PRE = ['Hints are not in the job description.', 'We carry. We do not advise.', 'That one. This is not a precedent.', 'Carrier. Not consultant.', 'Advice again. Noted.'];
+const HINT_POST = ['Consulting is outside the contract. That was 2.', 'Advice is billed. That was 2.', 'Billed.'];
+let hintN = 0, hintPaid = 0;
+function bestHint(){
+  const w = top(waste);
+  for (const c of [w, ...tabs.map(top)]) if (c && c.up && founds.some(d => canFound(c, d))) return {c, d: founds.find(d => canFound(c, d))};
+  for (const t of tabs){ const k = t.cards.findIndex(c => c.up); if (k <= 0) continue;
+    const c = t.cards[k], d = tabs.find(d => d !== t && d.cards.length && canTab(c, d)) || tabs.find(d => d !== t && canTab(c, d)); if (d) return {c, d}; }
+  if (w){ const d = tabs.find(d => d.cards.length && canTab(w, d)) || tabs.find(d => canTab(w, d)); if (d) return {c: w, d}; }
+  if (stock.cards.length) return {c: top(stock)};
+  if (waste.cards.length) return {slot: true};
+  return null;
+}
+$('hint').addEventListener('click', () => {
+  if (running || queue.length || gameOver || !talks.hidden) return;
+  if (napping) return say(rand(crew), 'On break.');
+  if (mode === 'strike' || mode === 'talks') return say(steward, 'No contract, no advice.', 2400);
+  if (mode === 'scab') return say(steward, 'You are on your own.', 2400);
+  const h = bestHint(), who = crew.filter(p => p.role === 'bench' && FRESH.includes(p.act))[0] || floorCrew()[0];
+  if (!h) return say(who, 'Nothing moves. That advice was free.', 2600);
+  if (h.c){ h.c.el.classList.add('hinted'); setTimeout(() => h.c.el.classList.remove('hinted'), 1700); }
+  else { const sl = document.querySelector('.slot.stock'); sl.classList.add('hot'); setTimeout(() => sl.classList.remove('hot'), 1700); }
+  if (h.d){ const el = document.createElement('div'), at = landing(h.d); el.className = 'hint hot'; place(el, at.x, at.y); table.appendChild(el); setTimeout(() => el.remove(), 1700); }
+  if (freeRide) return;
+  stats.hints = (stats.hints || 0) + 1; if (union) hintPaid++; else hintN++;
+  spend(union ? 2 : 1, W*.45, 4, 'hint'); sweat(who, union ? 2 : 1);
+  if (mode === 'work' && !(OT > 0 && !union)) say(who, union ? HINT_POST[Math.min(hintPaid - 1, 2)] : HINT_PRE[(hintN - 1) % HINT_PRE.length], 2800);
+});
 $('new').addEventListener('click', () => enqueue({type: 'new'}));
 $('again').addEventListener('click', () => enqueue({type: 'new'}));
 $('break').addEventListener('click', () => enqueue({type: 'break'}));
