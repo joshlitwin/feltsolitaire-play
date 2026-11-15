@@ -611,6 +611,7 @@ function dealCast(saved){
 }
 dealCast(SV0 && SV0.cast && SV0.cast.length === 6 ? SV0.cast : null);
 if (SV0 && crew[SV0.st]){ steward = crew[SV0.st]; steward.el.classList.add('chair'); }
+if (mode === 'scab') mode = 'strike';
 if (SV0) G = clamp(3 + crew.filter(p => p.stance > 0).length - crew.filter(p => p.stance < 0).length, 0, 5);
 const owner = h => mode === 'work' && !freeRide ? crew.find(p => p.habit === h) : null;
 // the owner did their thing again; before the walkout the player gets to know one of them by name
@@ -1098,9 +1099,10 @@ function startShift(withBriefing){
   eCap = 0; const p = P(); eCap = p.eMax;
   dealsLeft--; shift = true; struck = false; royalMoves = 0; E = p.eMax; OT = 0; otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; breaksLeft = p.breaks; sweepsThisDeal = 0; sinceNap = 0; seen.low = 0; seen.gr = 0; save();
   cards.forEach(c => c.el.classList.remove('grudge'));
-  grudge = nCon >= 2 ? rand(cards.filter(isRoyal)) : null; if (grudge) grudge.el.classList.add('grudge');
+  const LATER = false;      // the pre-deal promise and the ✕ card are switched off while the basics settle
+  grudge = LATER && nCon >= 2 ? rand(cards.filter(isRoyal)) : null; if (grudge) grudge.el.classList.add('grudge');
   brief = null; hud();
-  if (!withBriefing || nCon < 2) return;
+  if (!LATER || !withBriefing || nCon < 2) return;
   brief = {key: rand(Object.keys(BRIEFS)), on: false, broken: false};
   showPanel(`<h2>Deal ${runDeal} of ${RUN_DEALS > 99 ? '…' : RUN_DEALS}</h2>` +
     `<p>The crew starts this deal with ${p.eMax} energy. ${dealsLeft > 0 ? `The contract covers ${dealsLeft} more after it.` : 'The contract is up after it.'}</p>` +
@@ -1201,13 +1203,14 @@ function openTalks(kind){
   const mineK = HABIT_TERM[steward.habit];
   if (!known.length){ known = [mineK, ...byScore(DEMANDS.filter(k => k !== mineK)).slice(0, 2)]; knownAt = nCon; }
   else if (knownAt !== nCon && known.length < DEMANDS.length){ fresh = byScore(DEMANDS.filter(k => !known.includes(k)))[0]; known.push(fresh); knownAt = nCon; }
-  const first = nCon === 0, rows = DEMANDS.filter(k => known.includes(k)), offers = first ? [] : Object.keys(TERMS).filter(k => TERMS[k].offer);
-  const pt = k => first ? 1 : TERMS[k].pts, max = [...rows, ...offers].reduce((n, k) => n + pt(k), 0);
-  const T = first ? 2 : clamp(8 - G - Math.max(0, 6 - rows.length), 2, max - 1);
-  const fixed = first && kind !== 'reopen' && rows.includes(mineK) ? mineK : null;
+  // after the first contract: the new demand, plus the two the player leaned on most since the last signing
+  const begin = nCon === 0, offers = [], max = 3;
+  const rows = begin ? DEMANDS.filter(k => known.includes(k)) : DEMANDS.filter(k => [fresh, ...byScore(DEMANDS.filter(k => k !== fresh))].filter(Boolean).slice(0, 3).includes(k));
+  const T = begin ? 2 : withYou() >= 3 ? 1 : againstYou() >= 3 ? 3 : 2;       // how many they need: fewer with half the crew behind you, all three with half against
+  const fixed = begin && rows.includes(mineK) ? mineK : null, first = true;
   const why = {}; rows.forEach(k => { const g = grievance(k); if (g[0] > 0) why[k] = g[1]; });
   if (kind === 'renewal') mode = 'talks';
-  talk = {kind, rows, offers, first, fresh, why, fixed, need: kind === 'reopen' ? 5 : 4, sel: new Set(fixed ? [fixed] : []), T: Math.min(max, T + (kind === 'reopen' ? 1 : 0))};
+  talk = {kind, rows, offers, first, renew: !begin, fresh, why, fixed, need: 4, sel: new Set(fixed ? [fixed] : []), T: Math.min(max, T)};
   save(); hud(); renderTalk();
 }
 // who has a hand up for the terms ticked so far: your own demand counts double, and the further from you someone is, the more it takes
@@ -1217,14 +1220,17 @@ function hands(t){
 function renderTalk(){
   const t = talk, pt = k => t.first ? 1 : TERMS[k].pts, pts = [...t.sel].reduce((n, k) => n + pt(k), 0), ok = pts >= t.T;
   const row = k => { const c = TERMS[k], on = t.sel.has(k);
-    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${k === t.fixed ? '■' : on ? '☑' : '☐'} ${c.name}${k === t.fresh ? ' · new' : ''}${k === t.fixed ? ` · ${steward.name}'s` : ''}${t.first ? '' : `<em>${pt(k)} pt${pt(k) === 1 ? '' : 's'}</em>`}</span>` +
-      `<span class="te">${c.fx}</span>` + (t.first && t.why[k] ? `<span class="tq">${t.why[k]}</span>` : c.say ? `<span class="tq">“${c.say}”</span>` : '') + `</button>`; };
+    return `<button class="term${on ? ' on' : ''}" data-term="${k}" type="button" aria-pressed="${on}"><span class="tt">${k === t.fixed ? '■' : on ? '☑' : '☐'} ${c.name}${k === t.fixed ? ` · ${steward.name}'s` : ''}${k === t.fresh ? '<em>new</em>' : ''}</span>` +
+      `<span class="te">${c.fx}</span>` + (t.why[k] ? `<span class="tq">${t.why[k]}</span>` : '') + `</button>`; };
   const left = t.T - pts;
-  if (t.first) return showPanel(`<h2>Contract talks</h2>` +
-    `<p>${t.fixed ? `Three demands. ${steward.name} is steward, and ${steward.name}'s is not up for discussion. Agree to one of the other two and the crew goes back to work.` : `Three demands. Agree to ${t.T === 2 ? 'any two' : 'all three'} and the crew goes back to work.`}${t.kind === 'reopen' ? ' Walking away cost you the choice.' : ''}</p>` +
+  const then = t.kind === 'renewal' ? 'the crew carries on' : 'the crew goes back to work';
+  if (t.first) return showPanel(`<h2>${t.kind === 'renewal' ? 'The contract is up' : 'Contract talks'}</h2>` +
+    `<p>${t.fixed ? `Three demands. ${steward.name} is steward, and ${steward.name}'s is not up for discussion. Agree to one of the other two and ${then}.`
+      : t.T === 1 ? `Three demands. Half the crew is with you, so one will do. Pick one and ${then}.`
+      : t.T === 3 ? `Three demands. Half the crew is against you, so it is all three.`
+      : `Three demands. Agree to any two and ${then}.`}</p>` +
     t.rows.map(row).join('') +
-    `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (pick ${left} more)`}</button>` +
-    `<button data-act="walk" class="alt" type="button">Refuse, and move the cards yourself</button>`);
+    `<button data-act="sign" type="button"${ok ? '' : ' disabled'}>${ok ? 'Sign the contract' : `Sign (pick ${left} more)`}</button>`);
   const up = hands(t), nUp = up.filter(Boolean).length, signed = nUp >= t.need;
   const whose = k => { const o = crew.find(p => HABIT_TERM[p.habit] === k); return o ? o.name : 'all six'; };
   const vrow = k => { const c = TERMS[k], on = t.sel.has(k);
@@ -1256,7 +1262,7 @@ function sign(){
   eCap = 0; eCap = P().eMax;
   if (fromStrike){ shift = true; E = Math.min(P().eMax, 25); OT = 0; breaksLeft = P().breaks; } else startShift(false);
   save(); hud();
-  showPanel(`<h2>Contract ratified</h2><p>From now on every card you move costs the crew energy, shown at the top. Rest gives 12 back, once a deal. At zero it is overtime, and too much overtime means they walk again.</p><p>${votes === 6 ? 'Six hands for, none against.' : `${votes} hands for, ${6 - votes} against.`} ${fromStrike ? `It covers the rest of this deal and the next ${P().deals}.` : `It covers this deal and the next ${P().deals - 1}.`}</p>${clauseList()}` +
+  showPanel(`<h2>Contract ratified</h2>${fromStrike ? '<p>From now on every card you move costs the crew energy, shown at the top. Rest gives 12 back, once a deal. At zero it is overtime, and too much overtime means they walk again.</p>' : ''}<p>${votes === 6 ? 'Six hands for, none against.' : `${votes} hands for, ${6 - votes} against.`} ${fromStrike ? `It covers the rest of this deal and the next ${P().deals}.` : `It covers this deal and the next ${P().deals - 1}.`}</p>${clauseList()}` +
     (fromStrike ? `<p>The crew comes back to this deal with ${Math.round(E)} energy.</p>` : (grudge ? `<p>New this contract: one face card a deal is marked ✕ and nobody carries it unless you pay. Today it is the ${cardName(grudge)}.</p>` : '')) +
     `<button data-act="close" type="button">Back to the table</button>`);
 }
@@ -1287,6 +1293,7 @@ talks.addEventListener('click', e => {
   else if (a === 'promise'){ brief.on = true; run.promised++; E += 8; hud(); talks.hidden = true; say(steward, 'Noted. 8 more energy.', 2600); }
   else if (a === 'gpay'){ clearGrudge(); spend(8, W/2, H*.4, 'fee'); say(steward, 'Paid. Tap the card again.', 2600); }
   else if (a === 'ginsist'){ clearGrudge(); goodwill(-1); say(steward, 'Minuted. Tap it again.', 2600); }
+  else if (a === 'nextdeal'){ talks.hidden = true; enqueue({type: 'new'}); }
   else if (a === 'nextlocal'){ resetRun(true); enqueue({type: 'new'}); }
   else if (a === 'reset'){
     if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'Tap again: this erases the union and the contract'; return; }
@@ -1429,6 +1436,12 @@ $('hint').addEventListener('click', () => {
 let newArmed = 0;
 $('new').addEventListener('click', () => {
   const b = $('new');
+  if (!window.__feltQuickNew && union && talks.hidden && !queue.length && !running){
+    const last = runDeal >= RUN_DEALS;
+    return showPanel(`<h2>${LOCAL()}, deal ${Math.min(runDeal, RUN_DEALS)} of ${RUN_DEALS}</h2>` +
+      (mode === 'work' ? `<button data-act="nextdeal" type="button">${last ? 'End this deal and close the run' : gameOver || seen.stuck ? 'Next deal' : 'Give up this deal and start the next'}</button>` : '') +
+      `<button data-act="reset" class="alt" type="button">Start a whole new run</button><button data-act="close" type="button">Back to the table</button>`);
+  }
   if (!window.__feltQuickNew && mode === 'work' && !gameOver && !seen.stuck && moves >= 10 && performance.now() > newArmed){
     newArmed = performance.now() + 2600; b.textContent = 'Sure?';
     if (union) say(steward, 'A new deal uses up one deal of the contract.', 2600); setTimeout(() => { b.textContent = 'New'; }, 2600); return;
