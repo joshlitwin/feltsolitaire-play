@@ -50,7 +50,10 @@
   button[disabled]{opacity:.55;cursor:default}
   #pace.nudge{animation:nudge 1.3s ease-in-out infinite}
   @keyframes nudge{0%,55%,100%{box-shadow:0 2px 0 rgba(0,0,0,.28),0 3px 4px rgba(0,0,0,.2)}78%{box-shadow:0 2px 0 rgba(0,0,0,.28),0 0 0 4px rgba(255,250,235,.85)}}
+  /* iOS 26 softens whatever sits just under the status bar of a home-screen web app. Give it nothing to scroll, and keep the text below that strip. */
+  html{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none}
   @media (pointer:coarse){#bar{padding-top:16px}}
+  @media (display-mode:standalone){#bar{padding-top:40px}}
   .card.hinted .ci{outline:3px solid #fff3b0;outline-offset:-2px;animation:orderpulse .5s ease-in-out 3}
 
   /* ---------- table ---------- */
