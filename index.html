@@ -48,7 +48,8 @@
   #pace{background-color:#7fb7d6}
   #new{background-color:#e2806a}
   button[disabled]{opacity:.55;cursor:default}
-  #pace.nudge{animation:nudge 1.3s ease-in-out infinite}
+  #pace.shake{animation:btnshake .55s ease-in-out}
+  @keyframes btnshake{15%{transform:translateX(-4px) rotate(-3deg)}35%{transform:translateX(4px) rotate(3deg)}55%{transform:translateX(-3px) rotate(-2deg)}75%{transform:translateX(2px)}}
   @keyframes nudge{0%,55%,100%{box-shadow:0 2px 0 rgba(0,0,0,.28),0 3px 4px rgba(0,0,0,.2)}78%{box-shadow:0 2px 0 rgba(0,0,0,.28),0 0 0 4px rgba(255,250,235,.85)}}
   /* iOS 26 softens whatever sits just under the status bar of a home-screen web app. Give it nothing to scroll, and keep the text below that strip. */
   html{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none}
@@ -180,6 +181,10 @@
   .person.huff svg{animation:nope .4s}
   .ntag{display:none;position:absolute;left:50%;bottom:99%;transform:translateX(-50%);font-size:9.5px;font-weight:800;line-height:1.2;background:rgba(40,28,20,.82);color:#fffaf0;padding:1px 6px;border-radius:7px;white-space:nowrap;pointer-events:none}
   .person.known .ntag{display:block}
+  /* a name never sits on top of a card or a line of speech: hidden while walking or carrying, and speech goes above it */
+  #table .person.walk .ntag,#table .person.carry .ntag{display:none}
+  .person.known .bubble{bottom:calc(99% + 15px)}
+  .person.speaking{z-index:2300}
   #table.strike .person.chair .ntag{display:block;bottom:auto;top:100%}
   #table.strike .ntag,#table .a-stood .ntag,#table .person.nap .ntag,#table .a-spent .ntag{display:none}
   .drop{position:absolute;left:0;top:0;width:6px;height:8px;margin-top:-4px;z-index:2600;pointer-events:none;background:#a9d8f0;border-radius:50% 50% 50% 50%/35% 35% 65% 65%;box-shadow:0 1px 1px rgba(0,0,0,.3);animation:dropfall .75s ease-in forwards}
@@ -232,7 +237,6 @@
   #talks .lh{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8a6a52;border-bottom:1.5px dashed rgba(196,61,53,.45);padding-bottom:6px;margin:0 0 8px}
   #talks .sig{font-style:italic;margin-top:10px}
   #talks.more button[data-act="sign"]::before{content:"↓ more below";position:absolute;right:8px;top:-22px;font-size:11px;font-weight:800;color:#fffaf0;background:rgba(60,40,25,.85);padding:2px 8px;border-radius:9px}
-  #new.nudge{animation:nudge 1.3s ease-in-out infinite}
   #talks button[data-act="sign"]{position:sticky;bottom:0;z-index:2}
   #talks button[data-act="sign"][disabled]{opacity:1;background-color:#cfc4ad;color:#7a6f5f}
   #talks button.term{background-color:#efe2c4;padding:6px 10px;margin-bottom:6px;outline-color:rgba(70,40,10,.25)}
@@ -264,6 +268,14 @@
   #win[hidden]{display:none}
   #win h2{margin:0 0 4px;color:var(--red);font-size:24px}
   #win p{margin:0 0 12px;font-size:15px;font-weight:700}
+  #win.wide{width:min(86%,330px);text-align:left;transform:translate(-50%,-50%);top:46%}
+  #win.wide h2{font-size:21px}
+  #win .dl{margin:0 0 10px;padding:0;list-style:none;font-size:13.5px;font-weight:700;line-height:1.35}
+  #win .dl li{margin:0 0 5px;padding-left:18px;position:relative}
+  #win .dl li i{position:absolute;left:0;top:3px;width:11px;height:11px;border-radius:50%}
+  #win .tally{font-size:13px;font-weight:800;background:rgba(70,40,10,.08);border-radius:8px;padding:6px 8px;margin:0 0 10px}
+  #win .fine{font-size:12px;font-weight:600;color:#6b5a48;margin:0 0 10px}
+  #win.wide button{display:block;width:100%}
   .bit{position:absolute;top:-20px;width:10px;height:10px;border-radius:3px;z-index:2500;pointer-events:none;animation:fall 2.6s linear infinite}
   @keyframes fall{to{transform:translateY(110vh) rotate(540deg)}}
   @media (prefers-reduced-motion:reduce){.bit{display:none}}
@@ -318,8 +330,8 @@
   <main id="table" aria-label="Solitaire table">
     <div id="bench"></div>
     <div id="win" hidden role="status">
-      <h2>Deal complete</h2>
-      <p id="wintext"></p>
+      <h2 id="winhead">Deal complete</h2>
+      <div id="wintext"></div>
       <button id="again" type="button">Deal again</button>
     </div>
     <div id="talks" hidden role="dialog" aria-label="Contract talks"></div>
@@ -397,7 +409,7 @@ const canTab = (c, t) => t.cards.length ? (top(t).up && isRed(top(t)) !== isRed(
 const won = () => founds.every(f => f.cards.length === 13);
 // the same checks with the contract's rules applied (see P() below)
 const homeOK = (c, f) => canFound(c, f) && !(P().parity && f.cards.length - Math.min(...founds.map(x => x.cards.length)) >= 2);
-const tabOK = (c, t) => canTab(c, t) || (!t.cards.length && P().floor);
+const tabOK = (c, t, n = 1) => canTab(c, t) || (!t.cards.length && P().floor && n === 1);      // the open floor takes single cards
 const liftOK = run => run.length <= P().maxRun && !(P().kingAlone && run.length > 1 && run[0].rank === 13);
 function findDest(run, src){
   const c = run[0];
@@ -407,7 +419,7 @@ function findDest(run, src){
   // tableau piles, starting just after the one we came from, so repeat taps cycle through the options
   const start = src.type === 'tab' ? src.i + 1 : 0, order = [];
   for (let k = 0; k < 7; k++) order.push(tabs[(start + k) % 7]);
-  const fits = order.filter(t => t !== src && tabOK(c, t));
+  const fits = order.filter(t => t !== src && tabOK(c, t, run.length));
   const onto = fits.find(t => t.cards.length); if (onto) return onto;
   const pointless = src.type === 'tab' && c.idx === 0;        // already at the foot of a column: an empty one is no better
   return pointless ? null : (fits[0] || null);
@@ -423,8 +435,8 @@ const TERMS = {
   royalty:  {pts: 1, name: 'Royalty',  say: 'A King has never once helped carry a King.',          fx: 'A king is carried alone. A stack with a king at the bottom stays put.'},
   consult:  {pts: 1, name: 'Parity',   say: 'We go up together or we do not go up.',               fx: 'No suit goes more than two cards ahead of the slowest.'},
   pace:     {pts: 1, name: 'Bundles',  say: 'Nobody walks over for one card.',                     fx: 'The stock turns three cards at a time.'},
-  rework:   {pts: 1, name: 'Rework',   say: 'We carried it there. Then you had us carry it back.', fx: 'Undo takes back the last move only.'},
-  floor:    {pts: 0, name: 'Open floor', give: true, say: 'Kings do not get a private office.',    fx: 'Any card can start an empty column.'},
+  rework:   {pts: 1, name: 'Rework',   say: 'We carried it there. We are not carrying it back.',   fx: 'No undo while this contract is in force.'},
+  floor:    {pts: 0, name: 'Open floor', give: true, say: 'Kings do not get a private office.',    fx: 'Any single card can start an empty column. Stacks still need a king.'},
   short:    {pts: 1, name: 'Shorter contract', offer: true, fx: 'This contract covers 1 deal, not 2. Then you are back here.'},
   hazard:   {pts: 1, name: 'Overtime cap', offer: true, fx: 'They walk out at 3 overtime, not 5.'},
   shift:    {pts: 2, name: 'Shorter shift', offer: true, fx: 'Their maximum energy drops by 12.'},
@@ -471,7 +483,8 @@ let E = PRE_E, OT = 0, lastUp = 0, lastCall = false, breaksLeft = 0, fastLeft = 
 let stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
 const seen = {};
 let royalMoves = 0, struck = false;
-const RUN_DEALS = window.__feltLongRun ? 1e9 : 5;
+const RUN_WINS = window.__feltLongRun ? 1e9 : 3;       // a run is won by clearing this many deals; every deal not cleared turns one of the crew
+let dealLog = [];       // whose stance moved this deal, and why: shown on the end-of-deal card
 let eCap = 0;        // this deal's maximum energy, set when the deal starts
 let runDeal = 0, run = {walks: 0, strikes: 0, broken: 0, promised: 0, otDeals: 0, wins: 0, marks: [], lost: false};   // deals since the walkout; what the minutes will record
 let meta = {local: 52, past: []};                                                              // carried between runs: the local's number and past verdicts
@@ -486,13 +499,14 @@ try {
   if (sv && sv.union){ SV0 = sv; runDeal = sv.runDeal || 1; if (sv.run) run = Object.assign(run, sv.run); union = true; G = sv.G; clauses = sv.clauses || {}; known = sv.known || []; knownAt = sv.knownAt == null ? -1 : sv.knownAt; nCon = sv.nCon || 0; dealsLeft = sv.dealsLeft || 0; mode = sv.mode === 'talks' ? 'work' : (sv.mode || 'work'); if (sv.mode === 'talks') dealsLeft = 0; }
 } catch (e) {}
 function save(){ try { localStorage.setItem('felt-union', JSON.stringify({union, G, clauses, dealsLeft, mode, known, knownAt, nCon, runDeal, run,
-  cast: crew.map(p => [p.name, p.habit, p.known ? 1 : 0, p.stance]), st: crew.indexOf(steward)})); } catch (e) {} }
+  cast: crew.map(p => [p.name, p.habit, p.known ? 1 : 0, p.stance]), st: crew.indexOf(steward),
+  deal: union && dealOpen && mode === 'work' && !gameOver ? {s: snapshot(), E, OT, br: breaksLeft, cap: eCap, ot: otLog, log: dealLog.map(e => [crew.indexOf(e.p), e.to, e.why])} : null})); } catch (e) {} }
 function P(){
   const work = union && mode === 'work' && !freeRide;       // the contract's rules bite only while the crew is working a deal
   return {
     royal: 2, undo: 2, sweep: 4, hint: 2, noFast: false, nap: 0,
     maxRun: work && clauses.staffing ? 6 : 99, kingAlone: work && !!clauses.royalty, draw: work && clauses.pace ? 3 : 1,
-    sweeps: work && clauses.stock ? 2 : 1e9, parity: work && !!clauses.consult, floor: work && !!clauses.floor, oneUndo: work && !!clauses.rework,
+    sweeps: work && clauses.stock ? 2 : 1e9, parity: work && !!clauses.consult, floor: work && !!clauses.floor, noUndo: work && !!clauses.rework,
     breaks: 1, otMax: !union ? PRE_OT : clauses.hazard ? 3 : 5, deals: window.__feltLongRun ? (clauses.short ? 2 : 3) : clauses.short ? 1 : 2,
     /* Under contract a finished deal needs about 76 energy from a greedy bot (middle half 69 to 84, tests/sim.js), a careful
        person somewhat less. With Rest (+12) the budget runs from 70 with everyone against you to 90 with everyone for you. */
@@ -651,19 +665,25 @@ const LOCAL = () => 'Local ' + meta.local;
    and it shows in how they sit on the bench: coffee up and facing you, sitting, or back turned. */
 const withYou = () => crew.filter(p => p.stance > 0).length, againstYou = () => crew.filter(p => p.stance < 0).length;
 function syncG(){ G = clamp(3 + withYou() - againstYou(), 0, 5); }
-function shiftStance(p, d){
+function shiftStance(p, d, why){
   if (!p || !union) return false;
   const v = clamp(p.stance + d, -1, 1); if (v === p.stance) return false;
-  p.stance = v; syncG(); save(); hud();
+  p.stance = v; syncG();
+  if (why) dealLog.push({p, to: v, d, why});
+  if (mode === 'work' && W){ floatText(clamp(p.x - pw*.9, 4, W - 90), Math.max(8, p.y - ph - 16), v > 0 ? 'with you' : v < 0 ? 'against you' : 'undecided', d > 0); }
+  save(); hud();
   if (!run.lost && againstYou() >= 5){ run.lost = true; save(); clearQueue(); queue.push({type: 'lost'}); pump(); }     // five of six: they are out for good
   return true;
 }
 // something that used to cost or earn a point of goodwill now moves one person a step
-function goodwill(d, line){
-  const order = crew.slice().sort((a, b) => d < 0 ? (b.stance - a.stance) || ((a === steward) - (b === steward)) || (b.seq - a.seq) : (a.stance - b.stance) || (b.seq - a.seq));
+function goodwill(d, line, why, quiet){
+  const moved = q => dealLog.some(e => e.p === q);         // someone already moved this deal is the last to move again
+  const order = crew.slice().sort((a, b) => (moved(a) - moved(b)) || (d < 0 ? (b.stance - a.stance) || ((a === steward) - (b === steward)) || (b.seq - a.seq) : (a.stance - b.stance) || (b.seq - a.seq)));
   const p = order.find(q => d < 0 ? q.stance > -1 : q.stance < 1);
-  if (p && shiftStance(p, d) && mode === 'work' && talks.hidden) setTimeout(() => { if (!run.lost) say(p, line || (d < 0 ? 'I am done vouching for you.' : 'That deal was fair. Noted.'), 2800); }, 1200);
+  const ok = p && shiftStance(p, d, why);
+  if (ok && !quiet && mode === 'work' && talks.hidden) setTimeout(() => { if (!run.lost) say(p, line || (d < 0 ? 'I am done vouching for you.' : 'That deal was fair. Noted.'), 2800); }, 1200);
   save(); hud();
+  return ok ? p : null;
 }
 const STANCE_WORD = {'1': 'with you', '0': 'undecided', '-1': 'against'};
 function setP(p, x, y){ p.x = x; p.y = y; place(p.el, x - pw/2, y - ph); }
@@ -724,7 +744,7 @@ function refreshBench(walk){
 // what someone says coming off shift: how it felt, never the count
 function shiftLine(t){
   return t.undone ? 'There and back. That is twice the walk.' : t.ot ? 'That was my own time. I am sitting down.' : t.fast ? 'Ran the whole shift. I am sitting down.'
-    : t.royals > 1 ? 'Kings and queens all shift. I am sitting down.' : t.turns > t.carries + 2 ? 'More turned than carried. I am sitting down.'
+    : t.royals > 1 ? 'Kings and queens all shift. I am sitting down.' : !union && t.turns > t.carries + 2 ? 'More turned than carried. I am sitting down.'
     : rand(['That is my shift. I am sitting down.', 'Tag. Your turn.', 'Off shift.', 'My feet are felt. I am sitting down.']);
 }
 // after a full shift on the floor, swap with whoever has been resting longest, if anyone is still fit to
@@ -734,7 +754,7 @@ function relieve(){
     const inn = crew.filter(p => p.role === 'bench' && !p.busy && FRESH.includes(p.act)).sort((a, c) => a.seq - c.seq)[0];
     if (!inn) continue;
     const t = out.tally, bad = t.undone >= 2 || t.fast >= 1 || t.ot >= 1, good = !bad && !t.undone && t.carries >= 4 && out.stance < 0 && E >= P().eMax*.5;
-    const moved = union && (bad ? shiftStance(out, -1) : good ? shiftStance(out, 1) : false);
+    const moved = false;      // stance moves only at the end of a deal, where the card says who and why (panel round 3)
     say(out, shiftLine(t) + (moved ? (bad ? ' Noted.' : ' Fine.') : ''), 3400);
     inn.role = 'floor'; inn.post = out.post; inn.load = 0; inn.tally = newTally(); inn.seed = '';
     out.role = 'bench'; out.slot = inn.slot; out.seq = ++benchSeq; out.load = 0; out.wx = 0;
@@ -756,6 +776,7 @@ function setSigns(){
 }
 function say(p, text, ms = 2000){
   table.querySelectorAll('.bubble').forEach(o => o.remove());          // one voice at a time, so nothing overlaps
+  crew.forEach(q => q.el.classList.toggle('speaking', q === p));
   const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text; p.el.appendChild(b);
   const fit = () => {
     b.style.marginLeft = '0px';
@@ -764,7 +785,7 @@ function say(p, text, ms = 2000){
     else if (r.right > tr.right - 4) b.style.marginLeft = (tr.right - 4 - r.right) + 'px';
   };
   fit(); const iv = setInterval(() => { if (b.isConnected) fit(); else clearInterval(iv); }, 120);   // keep it on screen while the speaker walks
-  setTimeout(() => b.remove(), ms);
+  setTimeout(() => { b.remove(); if (!p.el.querySelector('.bubble')) p.el.classList.remove('speaking'); }, ms);
 }
 function floatText(x, y, text, plus){
   const f = document.createElement('div'); f.className = 'float' + (plus ? ' plus' : ''); f.textContent = text;
@@ -810,10 +831,9 @@ const dots = (n, of) => Array.from({length: of}, (_, i) => `<i class="${i < n ? 
 function hud(){
   const p = P(), working = mode === 'work';
   const marks = (run.marks || []).map(k => k === 'won' ? '●' : k === 'out' ? '○' : '✕').join('');      // deals so far: cleared, played out, walked away from
-  $('moves').textContent = union && mode === 'work' ? (RUN_DEALS > 99 ? 'Contract' : `Deal ${Math.min(runDeal, RUN_DEALS)} of ${RUN_DEALS}${marks ? ' ' + marks : ''}`) : moves + (moves === 1 ? ' move' : ' moves');
-  $('undo').textContent = union && working ? `Undo −${p.undo}` : 'Undo';
-  $('undo').disabled = !undoStack.length;
-  $('again').textContent = union ? (runDeal >= RUN_DEALS ? 'To the final meeting' : 'Next deal') : 'Deal again';
+  $('moves').textContent = union && mode === 'work' ? (RUN_WINS > 99 ? 'Contract' : `Won ${run.wins} of ${RUN_WINS}${marks ? ' · ' + marks : ''}`) : moves + (moves === 1 ? ' move' : ' moves');
+  $('undo').textContent = working && p.noUndo ? 'No undo' : union && working ? `Undo −${p.undo}` : 'Undo';
+  $('undo').disabled = !undoStack.length || (working && p.noUndo) || (union && gameOver && !dealOpen);
   $('clink').hidden = !union;
   $('title').textContent = union ? 'Felt ' + LOCAL() : 'Felt Solitaire';
   $('app').classList.toggle('u', union); $('hint').textContent = union && working ? `Hint −${p.hint}` : 'Hint';
@@ -830,7 +850,7 @@ function hud(){
     $('elab').textContent = `Energy ${Math.max(0, Math.round(E))} of ${p.eMax + (brief && brief.on ? 8 : 0)}`;
     $('eblk').classList.toggle('off', !working);
     $('gw').innerHTML = dots(G, 5);
-    $('gwlab').textContent = `With you: ${withYou()} of 6`;
+    $('gwlab').textContent = `With you ${withYou()} · against ${againstYou()} (out at 5)`;
     $('gw').innerHTML = crew.map((q, i) => `<i style="${q.stance > 0 ? `background:${LOOKS[i].body}` : q.stance < 0 ? 'background:#2a1c14;border:1.5px solid #e2806a' : `border:1.5px solid ${LOOKS[i].body}`}"></i>`).join('');
     const prom = brief && brief.on && OT <= 0;
     $('otblk').style.visibility = (OT > 0 || prom) && working ? 'visible' : 'hidden';
@@ -838,7 +858,7 @@ function hud(){
     $('otlab').textContent = !prom ? `Overtime ${OT} of ${p.otMax}` : brief.broken ? 'Promise broken' :
       brief.key === 'noUndo' ? 'Promise: no undos' : brief.key === 'noSweep' ? 'Promise: no pile reset' : `Promise: face cards ${Math.min(royalMoves, 6)} of 6`;
     $('break').textContent = breaksLeft > 0 ? 'Rest +12' : 'Rested';
-    $('break').disabled = !working || breaksLeft <= 0 || gameOver;
+    $('break').disabled = !working || breaksLeft <= 0 || gameOver || E >= p.eMax;
   }
   const turns = p.sweeps - sweepsThisDeal;
   slots.stock.innerHTML = !(union && working) ? '↻' : p.sweeps > 99 ? `<span>↻ −${p.sweep}</span>` : turns > 0 ? `<span>↻ −${p.sweep}</span><small>${turns === 1 ? 'once more' : 'twice more'}</small>` : '<small>no more turns</small>';
@@ -850,7 +870,6 @@ function hud(){
   b.disabled = shut;
   b.style.display = shut ? 'none' : '';
   b.textContent = !working ? 'Talks' : shut ? 'No faster' : fastLeft > 0 ? `Fast · ${fastLeft}` : union ? 'Faster −3' : 'Faster »';
-  b.classList.toggle('nudge', working && !shut && fastLeft === 0 && tire() < .8);
   table.style.setProperty('--step', (.26/tire()).toFixed(2) + 's');
   refreshBench(true);
 }
@@ -930,25 +949,45 @@ async function napTime(ms, restore){
 
 /* ---------------- moves ---------------- */
 const snapshot = () => ({piles: piles.map(p => p.cards.map(c => c.id)), ups: cards.map(c => c.up), moves, sw: sweepsThisDeal});
-const trimUndo = () => { if (P().oneUndo) undoStack = undoStack.slice(-1); };       // Rework: only the last move comes back
+const trimUndo = () => {};
 function restore(s){
   piles.forEach((p, i) => { p.cards = s.piles[i].map(id => cards[id]); });
   cards.forEach((c, i) => { c.up = s.ups[i]; });
   moves = s.moves; sweepsThisDeal = s.sw || 0;
 }
 let dry = 0;      // stock turns since a card last moved
-function unstick(){ dry = 0; seen.stuck = 0; $('new').classList.remove('nudge'); }
+function unstick(){ dry = 0; seen.stuck = 0; }
+let shakeAt = 0, paceShakes = 0;
+function shakePace(){ const b = $('pace'); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); paceShakes++; setTimeout(() => b.classList.remove('shake'), 600); }
 function afterAction(){
   if (mode !== 'work' || gameOver || !talks.hidden) return;
+  if (union && dealOpen) save();          // a reload comes back to this deal as it stands
   if (grudge && grudge.up && !seen.gr){ seen.gr = 1; say(steward, `The ${cardName(grudge)} is marked ✕. Nobody carries it today unless you pay.`, 3800); }
+  // before the union a tired crew makes the Faster button shake now and again; under contract it keeps still
+  if (!union && fastLeft === 0 && !P().noFast && tire() < .8 && performance.now() > shakeAt){ shakeAt = performance.now() + 20000; shakePace(); }
   if (!seen.stuck && !anyMove()){
-    seen.stuck = 1; $('new').classList.add('nudge'); say(floorCrew()[0] || steward, union ? 'Nothing fits. That is this deal played out.' : 'That is every card. Nothing fits. New deal?', 4200);
+    seen.stuck = 1;
+    say(floorCrew()[0] || steward, union ? 'Nothing fits. That is this deal played out.' : 'That is every card. Nothing fits.', 2600);
+    if (union) setTimeout(() => { if (seen.stuck && mode === 'work' && dealOpen && !gameOver) enqueue({type: 'end', kind: 'out'}); }, fast ? 40 : 1500);
+    else { gameOver = true; showBox('Nothing fits', '<p>No card can move. That is this deal played out.</p>', 'Deal again', false); }
   }
 }
 /* Is there anything left to do in this deal? A card that can go home, a move that turns a card over, the waste card onto
    the table, or any card the stock can still bring to the top that fits somewhere, under the rules in force. */
 function anyMove(){
   if (bestHint(true)) return true;
+  const empty = {cards: []}, reach = stock.cards.length || sweepsThisDeal < P().sweeps;
+  const waiting = () => [...(reach ? [...stock.cards, ...waste.cards] : [top(waste)])].some(c => c && tabOK(c, empty)) ||
+    tabs.some(t => { const k = t.cards.findIndex(c => c.up); return k > 0 && liftOK(t.cards.slice(k)) && tabOK(t.cards[k], empty, t.cards.length - k); });
+  for (const t of tabs){
+    const k = t.cards.findIndex(c => c.up); if (k < 0) continue;
+    for (let j = k; j < t.cards.length; j++){
+      const run = t.cards.slice(j);
+      if (!liftOK(run) || !tabs.some(d => d !== t && d.cards.length && canTab(run[0], d))) continue;
+      if (j === 0 && waiting()) return true;                                     // empties a column something is waiting for
+      if (j > k && founds.some(f => homeOK(t.cards[j - 1], f))) return true;     // a split that lets the card under it go home
+    }
+  }
   const n = P().draw, fits = c => founds.some(f => homeOK(c, f)) || tabs.some(t => tabOK(c, t));
   let st = stock.cards.slice(), wa = waste.cards.slice();
   const pass = () => { while (st.length){ for (let k = 0; k < n && st.length; k++) wa.push(st.pop()); if (fits(wa[wa.length - 1])) return true; } return false; };
@@ -1006,7 +1045,7 @@ async function doDraw(){
 function nope(run){
   for (const c of run){ const ci = c.el.firstChild; ci.classList.remove('nope'); void ci.offsetWidth; ci.classList.add('nope'); setTimeout(() => ci.classList.remove('nope'), 340); }
 }
-const legal = (run, src, d) => d !== src && (d.type === 'found' ? run.length === 1 && homeOK(run[0], d) : d.type === 'tab' && tabOK(run[0], d));
+const legal = (run, src, d) => d !== src && (d.type === 'found' ? run.length === 1 && homeOK(run[0], d) : d.type === 'tab' && tabOK(run[0], d, run.length));
 function runOf(c){
   const p = c.pile;
   if (!c.up || p.type === 'stock') return null;
@@ -1053,21 +1092,46 @@ async function afterMove(){
   }
   if (won()) celebrate();
 }
-function endShift(wonIt){
-  if (!shift) return ''; shift = false;
-  const seenG = nCon >= 2;
-  if (OT > 0){ run.otDeals++; goodwill(-1); return 'Overtime was worked.'; }
-  if (wonIt && struck) return '';
-  if (wonIt){ goodwill(1); return 'No overtime. One of the crew has come round.'; }
-  return '';
+/* The end of a deal under contract: logged, then one of the crew moves. Cleared, someone comes round; not cleared,
+   someone turns; overtime worked, someone turns as well. The card says who, which way and why. */
+function endDeal(kind){
+  if (!union || mode !== 'work' || !dealOpen) return false;
+  const ot = OT > 0; shift = false;
+  logDeal(kind);
+  if (kind === 'won') run.wins++;
+  if (ot) run.otDeals++;
+  if (kind === 'won') goodwill(1, null, 'the deal was cleared', true);
+  else goodwill(-1, null, kind === 'out' ? 'the deal was not cleared' : 'you walked away from a deal with moves left', true);
+  if (ot && !run.lost) goodwill(-1, null, 'overtime was worked', true);
+  gameOver = true; fastLeft = 0; save(); hud();
+  if (!run.lost) dealCard(kind);
+  return true;
+}
+function showBox(head, html, btn, wide){
+  $('winhead').textContent = head; $('wintext').innerHTML = html; $('again').textContent = btn;
+  $('win').classList.toggle('wide', !!wide); $('win').hidden = false;
+}
+function dealCard(kind){
+  const head = {won: 'Deal cleared', out: 'Deal not cleared', left: 'Walked away'}[kind];
+  const lead = kind === 'won' ? `All 52 home in ${moves} moves.` : kind === 'out' ? 'Nothing fits. No card can move.' : 'There were still moves on the table.';
+  const word = to => to > 0 ? 'is with you now' : to < 0 ? 'is against you now' : 'is undecided now';
+  const rows = dealLog.map(e => `<li><i style="background:${e.to > 0 ? LOOKS[crew.indexOf(e.p)].body : e.to < 0 ? '#2a1c14' : 'transparent'};border:1.5px solid ${e.to < 0 ? '#e2806a' : LOOKS[crew.indexOf(e.p)].body}"></i>${e.p.name} ${word(e.to)}: ${e.why}.</li>`).join('');
+  const done = run.wins >= RUN_WINS, a = againstYou(), next = 58 + 4*G - (clauses.shift ? 12 : 0);
+  const con = dealsLeft > 0 ? `The contract covers ${dealsLeft} more deal${dealsLeft === 1 ? '' : 's'}.` : 'The contract is up. Talks before the next deal.';
+  showBox(head, `<p>${lead}</p>` + (rows ? `<ul class="dl">${rows}</ul>` : '<p class="fine">Nobody changed sides this deal.</p>') +
+    `<div class="tally">Won ${run.wins} of ${RUN_WINS} · against you ${a} of 5${a >= 3 && !done ? ' (at 5 they are out for good)' : ''}</div>` +
+    (done ? '' : `<p class="fine">Next deal starts with ${next} energy. ${con}</p>`),
+    done ? 'To the final meeting' : 'Next deal', true);
+  if (kind === 'won') table.classList.add('party');
 }
 function celebrate(){
   if (gameOver) return; gameOver = true;
-  const note = mode === 'work' && union ? endShift(true) : '';
-  if (mode === 'work'){ table.classList.add('party'); if (union){ run.wins++; logDeal('won'); } }
-  $('wintext').textContent = mode === 'scab' ? `All 52 home in ${moves} moves, by you, alone. The strike continues.`
-    : `All 52 home in ${moves} moves. Six carriers, no injuries. ${note}`;
-  $('win').hidden = false; hud();
+  if (mode === 'work' && union && dealOpen){ endDeal('won'); }
+  else {
+    if (mode === 'work') table.classList.add('party');
+    showBox('Deal complete', `<p>${mode === 'scab' ? `All 52 home in ${moves} moves, by you, alone. The strike continues.` : `All 52 home in ${moves} moves. Six carriers, no injuries.`}</p>`, union ? 'Next deal' : 'Deal again', false);
+  }
+  hud();
   const cols = ['#d9584c', '#e3ad3f', '#5b8fc9', '#8f6cc0', '#e385a6', '#4fb3a5', '#f3e8d0'];
   for (let i = 0; i < 34; i++){
     const b = document.createElement('div'); b.className = 'bit';
@@ -1076,12 +1140,12 @@ function celebrate(){
     table.appendChild(b);
   }
 }
-/* A run is won by getting through five deals with the local still standing. Each deal is logged as cleared ('won'),
+/* A run is won by clearing RUN_WINS deals with the local still standing. Each deal is logged as cleared ('won'),
    played until nothing fits ('out') or walked away from with moves still on the table ('left'). */
 function logDeal(kind){ if (!dealOpen) return; dealOpen = false; run.marks.push(kind); save(); }
 function verdict(){
   const L = LOCAL();
-  if (run.lost) return ['Out for good', 'Five of the six would not come back. The sixth is thinking it over.'];
+  if (run.lost) return ['Out for good', `Five of the six would not come back. The sixth is thinking it over. Deals won: ${run.wins} of ${RUN_WINS}.`];
   if (mode === 'scab' || run.walks >= 2) return ['Lockout', 'The cards were moved by Management, alone. The picket kept the time.'];
   if (run.strikes >= 1) return ['Twice out', 'There were two strike letters. The second was shorter.'];
   if (run.broken >= 1) return ['Bad faith', `Promises made: ${run.promised}. Promises kept: ${run.promised - run.broken}. Both figures are in the minutes.`];
@@ -1092,10 +1156,10 @@ function showMinutes(){
   const [word, line] = verdict(), past = meta.past.slice(-6).map(p => `${p.n}: ${p.word}`).join(' · ');
   const cnt = k => run.marks.filter(x => x === k).length;
   const deals = [[cnt('won'), 'cleared'], [cnt('out'), 'played out'], [cnt('left'), 'walked away from']].filter(x => x[0]).map(x => `${x[0]} ${x[1]}`).join(', ');
-  gameOver = true; $('win').hidden = true;
-  showPanel(`<p class="lh">Felt ${LOCAL()} · minutes of the final meeting</p><h2>${run.lost ? 'The crew is out for good' : 'Five deals done. The local stands.'}</h2>` +
+  gameOver = true; $('win').hidden = true; table.classList.remove('party'); table.querySelectorAll('.bit').forEach(b => b.remove());
+  showPanel(`<p class="lh">Felt ${LOCAL()} · minutes of the final meeting</p><h2>${run.lost ? 'The crew is out for good' : `${RUN_WINS} deals won. The local stands.`}</h2>` +
     `<p><b>${word}.</b> ${line}</p>` +
-    `<p>Deals: ${deals || 'none finished'}. With Management at the close: ${withYou()} of 6. In the chair: ${steward.name}.</p>` +
+    `<p>Deals: ${deals || 'none finished'}. With Management at the close: ${withYou()} of 6. Against: ${againstYou()}. In the chair: ${steward.name}.</p>` +
     (past ? `<p class="fine">Earlier locals. ${past}</p>` : '') +
     `<p class="sig">The file on ${LOCAL()} is closed.</p><button data-act="nextlocal" type="button">Open the file on Local ${meta.local + 1}</button>`);
 }
@@ -1116,7 +1180,7 @@ function resetRun(close){
   if (close){ meta.past.push({n: meta.local, word: verdict()[0]}); meta.local++; saveMeta(); }
   union = false; G = 3; clauses = {}; known = []; knownAt = -1; nCon = 0; mode = 'work'; E = PRE_E; OT = 0; otLog = []; lastUp = 0; lastCall = false; warnIdx = 0; fastLeft = 0; shift = false; clearGrudge(); brief = null; talk = null; gameOver = false;
   eCap = 0; crew.forEach(p => p.el.classList.remove('chair', 'turned'));
-  runDeal = 0; run = {walks: 0, strikes: 0, broken: 0, promised: 0, otDeals: 0, wins: 0, marks: [], lost: false}; dealOpen = false;
+  runDeal = 0; run = {walks: 0, strikes: 0, broken: 0, promised: 0, otDeals: 0, wins: 0, marks: [], lost: false}; dealOpen = false; dealLog = [];
   stats = {carries: 0, royals: 0, runs: 0, draws: 0, sweeps: 0, undos: 0, fast: 0, hints: 0, breaks: 0};
   Object.keys(seen).forEach(k => delete seen[k]); Object.keys(gripeN).forEach(k => delete gripeN[k]); hintN = 0; hintPaid = 0; dry = 0;
   crew.forEach(p => { p.tally = newTally(); p.load = 0; }); dealCast(null); steward = crew[0];
@@ -1124,18 +1188,11 @@ function resetRun(close){
   table.classList.remove('strike'); hud(); measure(); crew.forEach(p => goHome(p)); talks.hidden = true;
 }
 async function newGame(){
-  let left = '';
-  if (union && mode === 'work' && dealOpen){            // leaving a deal: played out if nothing fits, walked away from if something still does
-    const kind = anyMove() ? 'left' : 'out';
-    logDeal(kind);
-    left = endShift(false) ? 'Overtime logged.' : '';     // its overtime still counts
-    if (kind === 'left' && !left) goodwill(-1, 'We were not finished.');
-    if (run.lost) return;
-  }
-  if (union && ((runDeal >= RUN_DEALS && !booting) || run.marks.length >= RUN_DEALS)){ booting = false; save(); return showMinutes(); }
+  if (union && mode === 'work' && dealOpen && !booting){ endDeal(anyMove() ? 'left' : 'out'); return; }     // leaving a deal shows its card first
+  if (union && run.wins >= RUN_WINS){ booting = false; save(); return showMinutes(); }
   if (union && !booting) runDeal++;
   crew.forEach(p => { p.tally = newTally(); });
-  gameOver = false; table.classList.remove('party'); $('win').hidden = true; talks.hidden = true;
+  gameOver = false; table.classList.remove('party'); $('win').hidden = true; $('win').classList.remove('wide'); talks.hidden = true;
   table.querySelectorAll('.bit').forEach(b => b.remove());
   cards.forEach(c => c.el.classList.remove('grudge')); grudge = null; brief = null;
   const deck = cards.slice();
@@ -1157,19 +1214,26 @@ async function newGame(){
   await sleep(28*16 + 420);
   cards.forEach(c => { c.el.style.transitionDelay = ''; });
   applyLayout(false, true);
-  const resume = booting && !(SV0 && SV0.mode === 'talks'); booting = false;      // a reload redeals the deal you were on; it does not use one up
-  if (union && mode === 'work'){ if (resume) startShift(false, true); else if (dealsLeft <= 0) openTalks('renewal'); else startShift(true); }
-  if (left) say(crew[3], left, 3000);
+  const resume = booting && !!(SV0 && SV0.mode !== 'talks' && SV0.deal); booting = false;      // a deal that had already ended does not come back free      // a reload comes back to the deal you were on, as it was
+  if (union && mode === 'work'){
+    if (resume){
+      startShift(false, true);
+      const d = SV0 && SV0.deal;
+      if (d && d.s){ restore(d.s); E = d.E; OT = d.OT || 0; breaksLeft = d.br || 0; eCap = d.cap || eCap; otLog = d.ot || [];
+        dealLog = (d.log || []).filter(e => crew[e[0]]).map(e => ({p: crew[e[0]], to: e[1], why: e[2]})); applyLayout(false, true); hud(); }
+    }
+    else if (dealsLeft <= 0) openTalks('renewal'); else startShift(true);
+  }
   if (mode === 'work') {}
   else if (mode === 'talks'){ if (talk) renderTalk(); else openTalks('renewal'); }
 }
 function doUndo(){
-  if (!undoStack.length) return;
+  if (!undoStack.length || P().noUndo || (union && gameOver && !dealOpen)) return;      // a logged deal stays logged
   if (mode === 'work'){ stats.undos++; breach('noUndo'); spend(P().undo, W/2, topY + ch*.4, 'undo');
     const who = lastTeam.filter(p => p.role === 'floor'); const uo = owner('undo'), hit = uo ? [uo] : who.length ? who : floorCrew(); didHabit(uo); hit.forEach(p => { p.tally.undone++; sweat(p, 2); huff(p); });
     gripe('undo', hit[0]); }
   restore(undoStack.pop());
-  if (gameOver){ gameOver = false; if (union && mode === 'work'){ shift = true; if (!dealOpen){ dealOpen = true; run.marks.pop(); run.wins--; } } table.classList.remove('party'); $('win').hidden = true; table.querySelectorAll('.bit').forEach(b => b.remove()); }
+  if (gameOver){ gameOver = false; table.classList.remove('party'); $('win').hidden = true; table.querySelectorAll('.bit').forEach(b => b.remove()); }
   applyLayout(true, true); hud();
 }
 
@@ -1177,7 +1241,7 @@ function doUndo(){
 function startShift(withBriefing, resume){
   eCap = 0; const p = P(); eCap = p.eMax;
   if (!resume) dealsLeft--;
-  dealOpen = true; Object.keys(ruleN).forEach(k => delete ruleN[k]);
+  dealOpen = true; dealLog = []; Object.keys(ruleN).forEach(k => delete ruleN[k]);
   const ag = againstYou(), wy = withYou();
   setTimeout(() => { if (mode === 'work' && talks.hidden && !gameOver) say(steward, ag >= 3 ? 'Half the bench has its back to you. Deal.' : wy >= 3 ? 'Most of us are fine with you. Deal.' : rand(['Contract is in force. Deal.', 'Same six. Same contract. Deal.']), 2800); }, 900);
   shift = true; struck = false; royalMoves = 0; E = p.eMax; OT = 0; otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; breaksLeft = p.breaks; sweepsThisDeal = 0; sinceNap = 0; seen.low = 0; seen.gr = 0; save();
@@ -1187,7 +1251,7 @@ function startShift(withBriefing, resume){
   brief = null; hud();
   if (!LATER || !withBriefing || nCon < 2) return;
   brief = {key: rand(Object.keys(BRIEFS)), on: false, broken: false};
-  showPanel(`<h2>Deal ${runDeal} of ${RUN_DEALS > 99 ? '…' : RUN_DEALS}</h2>` +
+  showPanel(`<h2>Deal ${runDeal}</h2>` +
     `<p>The crew starts this deal with ${p.eMax} energy. ${dealsLeft > 0 ? `The contract covers ${dealsLeft} more after it.` : 'The contract is up after it.'}</p>` +
     `<p><b>They will start with 8 more</b> if you promise that ${BRIEFS[brief.key]}.</p>` +
     `<p class="fine">Break the promise and one of the crew turns against you.</p>` +
@@ -1218,7 +1282,7 @@ async function startStrike(){
   if (first){ steward = pickSteward(); tag(steward, true); runDeal = 1; } else run.strikes++;
   crew.forEach(p => p.el.classList.toggle('chair', p === steward));
   mode = 'strike'; union = true; fastLeft = 0;
-  if (first){ crew.forEach(p => { p.stance = 0; }); steward.stance = -1; syncG(); } else goodwill(-1); talk = null; shift = false; struck = true; save();
+  if (first){ crew.forEach(p => { p.stance = 0; }); steward.stance = -1; syncG(); } else goodwill(-1, null, 'the crew walked out again', true); talk = null; shift = false; struck = true; save();
   if (run.lost) return;        // that was the fifth of them: the minutes follow
   // the crew stops, the steward steps out and says it, then the line forms
   table.classList.add('dim');
@@ -1334,8 +1398,9 @@ function clauseList(){
   const ks = Object.keys(clauses).filter(k => TERMS[k]);
   return ks.length ? `<ul>${ks.map(k => `<li>${TERMS[k].name}${TERMS[k].give ? ' (theirs to give)' : ''}: ${TERMS[k].fx}</li>`).join('')}</ul>` : '<p>No clauses.</p>';
 }
-const how = () => `<p class="fine">Carrying costs the crew energy; the prices are on the buttons. Turning the stock is free. At zero it is overtime, and after ${P().otMax} of those they walk out.<br>` +
-  `Clear a deal with no overtime and someone comes round. Walk away from a deal that still has moves and someone turns against you. The more who are with you, the more energy a deal starts with. Five against and they are out for good.</p>`;
+const how = () => `<p><b>Win ${RUN_WINS} deals and the local stands.</b> Won so far: ${run.wins}.</p>` +
+  `<p class="fine">Clear a deal and one of the crew comes round. A deal not cleared, or walked away from, turns one against you, and so does overtime. Five against and they are out for good. The more who are with you, the more energy a deal starts with.<br>` +
+  `Carrying costs energy; the prices are on the buttons. Turning a card off the stock is free; turning the whole pile back over costs ${P().sweep}. At zero it is overtime, and after ${P().otMax} of those they walk out.</p>`;
 function sign(){
   const t = talk, votes = t.first ? 6 : hands(t).filter(Boolean).length; talk = null;
   const fromStrike = mode !== 'talks';
@@ -1347,11 +1412,11 @@ function sign(){
   table.classList.remove('strike'); measure(); crew.forEach(p => goHome(p));
   otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; seen.cl = {};
   eCap = 0; eCap = P().eMax;
-  if (fromStrike){ shift = true; dealOpen = true; E = Math.round(P().eMax/2); OT = 0; breaksLeft = P().breaks; } else startShift(false);
+  if (fromStrike){ shift = true; dealOpen = true; dealLog = []; E = Math.round(P().eMax/2); OT = 0; breaksLeft = P().breaks; } else startShift(false);
   save(); hud();
   applyLayout(true);
   showPanel(`<h2>Contract ratified</h2>` +
-    (fromStrike ? `<p>Five deals to get through, and this is the first. Carrying costs the crew energy, shown at the top. At zero it is overtime, and too much of that means they walk again.</p>` : '') +
+    (fromStrike ? `<p><b>Win ${RUN_WINS} deals and the local stands.</b> This one counts. Every deal you don't clear turns one of the crew against you. Five against and they are out for good.</p><p>Carrying costs the crew energy, shown at the top. At zero it is overtime, and too much of that means they walk again.</p>` : '') +
     `<p>${fromStrike ? `It covers the rest of this deal and the next ${P().deals}.` : `It covers this deal and the next ${P().deals - 1}.`}</p>${clauseList()}` +
     (fromStrike ? `<p>The crew comes back to this deal with ${Math.round(E)} energy.</p>` : '') +
     `<button data-act="close" type="button">Back to the table</button>`);
@@ -1383,6 +1448,7 @@ talks.addEventListener('click', e => {
   else if (a === 'gpay'){ clearGrudge(); spend(8, W/2, H*.4, 'fee'); say(steward, 'Paid. Tap the card again.', 2600); }
   else if (a === 'ginsist'){ clearGrudge(); goodwill(-1); say(steward, 'Minuted. Tap it again.', 2600); }
   else if (a === 'nextdeal'){ talks.hidden = true; enqueue({type: 'new'}); }
+  else if (a === 'walkaway'){ talks.hidden = true; enqueue({type: 'end', kind: anyMove() ? 'left' : 'out'}); }
   else if (a === 'nextlocal'){ resetRun(true); enqueue({type: 'new'}); }
   else if (a === 'reset'){
     if (b.dataset.sure !== '1'){ b.dataset.sure = '1'; b.textContent = 'Tap again: this erases the union and the contract'; return; }
@@ -1410,10 +1476,11 @@ async function pump(){
       else if (a.type === 'strike') await startStrike();
       else if (a.type === 'lost') await lostRun();
       else if (a.type === 'undo') doUndo();
+      else if (a.type === 'end'){ if (mode === 'work' && dealOpen && !gameOver) endDeal(a.kind); }
       else if (a.type === 'break'){
         if (mode === 'work' && union && breaksLeft > 0 && !gameOver){ breaksLeft--; stats.breaks++; hud();
           const tired = crew.filter(p => p.role === 'bench').sort((a, c) => c.seq - a.seq)[0];      // whoever came off shift last
-          await napTime(4000, 12); if (shiftStance(tired, 1)) setTimeout(() => say(tired, 'I needed that. Noted.', 2800), 400); refreshBench(true); }
+          await napTime(4000, 12); say(tired, 'I needed that.', 2400); refreshBench(true); }
       }
       else if (mode === 'strike' || mode === 'talks'){
         if (a.card && a.card.up) nope([a.card]);
@@ -1497,7 +1564,7 @@ function bestHint(noStock){
   const w = top(waste);
   for (const c of [w, ...tabs.map(top)]) if (c && c.up && founds.some(d => homeOK(c, d))) return {c, d: founds.find(d => homeOK(c, d))};
   for (const t of tabs){ const k = t.cards.findIndex(c => c.up); if (k <= 0 || !liftOK(t.cards.slice(k))) continue;
-    const c = t.cards[k], d = tabs.find(d => d !== t && d.cards.length && canTab(c, d)) || tabs.find(d => d !== t && tabOK(c, d)); if (d) return {c, d}; }
+    const c = t.cards[k], d = tabs.find(d => d !== t && d.cards.length && canTab(c, d)) || tabs.find(d => d !== t && tabOK(c, d, t.cards.length - k)); if (d) return {c, d}; }
   if (w){ const d = tabs.find(d => d.cards.length && canTab(w, d)) || tabs.find(d => tabOK(w, d)); if (d) return {c: w, d}; }
   if (noStock) return null;
   if (stock.cards.length) return {c: top(stock)};
@@ -1529,13 +1596,12 @@ let newArmed = 0;
 $('new').addEventListener('click', () => {
   const b = $('new');
   if (!window.__feltQuickNew && union && talks.hidden && !queue.length && !running){
-    const last = runDeal >= RUN_DEALS;
-    return showPanel(`<h2>${LOCAL()}, deal ${Math.min(runDeal, RUN_DEALS)} of ${RUN_DEALS}</h2>` +
-      (mode === 'work' ? (done => `<button data-act="nextdeal" type="button">${done ? (last ? 'To the final meeting' : 'Next deal') : last ? 'Walk away from this deal and close the run' : 'Walk away from this deal'}</button>` +
-        (done ? '' : '<p class="fine">There are still moves here. Walk away and one of the crew will hold it against you.</p>'))(gameOver || !anyMove()) : '') +
+    return showPanel(`<h2>${LOCAL()}: won ${run.wins} of ${RUN_WINS}</h2>` +
+      (mode === 'work' ? (gameOver ? `<button data-act="nextdeal" type="button">${run.wins >= RUN_WINS ? 'To the final meeting' : 'Next deal'}</button>`
+        : `<p class="fine"><b>Walking away counts as a deal not cleared: one of the crew turns against you.${againstYou() >= 4 ? ' That would be the fifth, and the run is over.' : ''}</b></p><button data-act="walkaway" type="button">Walk away from this deal</button>`) : '') +
       `<button data-act="reset" class="alt" type="button">Start a whole new run</button><button data-act="close" type="button">Back to the table</button>`);
   }
-  if (!window.__feltQuickNew && mode === 'work' && !gameOver && !seen.stuck && moves >= 10 && performance.now() > newArmed){
+  if (!window.__feltQuickNew && !union && mode === 'work' && !gameOver && !seen.stuck && moves >= 10 && performance.now() > newArmed){
     newArmed = performance.now() + 2600; b.textContent = 'Sure?';
     if (union) say(steward, 'Leaving? It still counts as a deal.', 2600); setTimeout(() => { b.textContent = 'New'; }, 2600); return;
   }
@@ -1578,7 +1644,11 @@ window.__felt = {piles, cards, stock, waste, founds, tabs, crew, enqueue, findDe
   state: () => ({moves, gameOver, mode, union, G, E, OT, clauses, dealOpen, sweeps: sweepsThisDeal, stuck: !!seen.stuck, dealsLeft, breaksLeft, fastLeft, stats, grudge: grudge && grudge.id, brief, talk: talk && {T: talk.T, rows: talk.rows, offers: talk.offers, fixed: talk.fixed}, nCon, known, runDeal, run, local: meta.local,
     steward: steward.name, cast: crew.map(p => ({name: p.name, habit: p.habit, known: !!p.known, did: p.did, stance: p.stance})),
     otLog, crew: crew.map(p => ({role: p.role, act: p.act, load: p.load, x: Math.round(p.x), y: Math.round(p.y)}))}),
-  setFast: v => { fast = v; }, setE: v => { E = v; hud(); }, setG: v => { G = v; hud(); }};
+  setFast: v => { fast = v; }, setE: v => { E = v; hud(); }, setG: v => { G = v; hud(); }, paceShakes: () => paceShakes,
+  // late in a run, for playtests about the end: so many deals won, so many of the crew against
+  seedRun: (wins, against) => { if (!union) return false; run.wins = wins; run.marks = [...Array(wins).fill('won'), ...Array(Math.max(0, against - 1)).fill('out')]; runDeal = run.marks.length + 1;
+    crew.forEach(p => { p.stance = 0; }); steward.stance = -1; crew.filter(p => p !== steward).slice(0, Math.max(0, against - 1)).forEach(p => { p.stance = -1; }); syncG(); save(); hud(); return true; },
+  endDeal: k => enqueue({type: 'end', kind: k})};
 })();
 </script>
 </body>
