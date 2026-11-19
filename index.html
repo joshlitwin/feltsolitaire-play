@@ -406,6 +406,88 @@ for (const suit of SUITS) for (let rank = 1; rank <= 13; rank++){
 const top = p => p.cards[p.cards.length - 1];
 const canFound = (c, f) => f.cards.length ? (top(f).suit === c.suit && top(f).rank + 1 === c.rank) : c.rank === 1;
 const canTab = (c, t) => t.cards.length ? (top(t).up && isRed(top(t)) !== isRed(c) && top(t).rank === c.rank + 1) : c.rank === 13;
+/* SOLVER START: is this deal winnable under these rules? Used to deal only winnable deals; tests/solver.js loads this block.
+   Cards {r: 1-13, s: 0-3 (1 and 3 red), up}. Tableau columns bottom to top; talon in draw order (the next card drawn first).
+   Rules: draw (1|3), sweeps (turns of the pile allowed), maxRun, kingAlone, parity, floor (a single card may start an empty column).
+   A deal counts as won once every tableau card is face up: the crew then finish it on the house.
+   Returns 'win', 'lose' (searched everything it tries) or 'unknown' (ran out of budget). It never moves cards back off a
+   foundation and only splits a run to send the card under it home, so 'lose' means "not found", and only 'win' is a guarantee. */
+const FeltSolver = (() => {
+  const red = s => s === 1 || s === 3;
+  function solve(tabs0, talon0, R, budget){
+    const draw = R.draw || 1, maxSw = R.sweeps == null ? 1e9 : R.sweeps, maxRun = R.maxRun || 99;
+    const cols = tabs0.map(t => ({down: t.filter(c => !c.up).map(c => c.r * 4 + c.s), up: t.filter(c => c.up).map(c => c.r * 4 + c.s)}));
+    let talon = talon0.map(c => c.r * 4 + c.s), ti = 0, sw = 0;      // ti cards drawn so far: the waste is talon[0..ti-1]
+    const f = [0, 0, 0, 0];
+    const R_ = x => x >> 2, S_ = x => x & 3;
+    const homeOK = x => f[S_(x)] === R_(x) - 1 && !(R.parity && f[S_(x)] - Math.min(...f) >= 2);
+    const onto = (x, col, n = 1) => col.up.length ? (red(S_(col.up[col.up.length - 1])) !== red(S_(x)) && R_(col.up[col.up.length - 1]) === R_(x) + 1)
+      : !col.down.length && (R_(x) === 13 || (!!R.floor && n === 1));      // the open floor takes single cards only
+    const liftOK = run => run.length <= maxRun && !(R.kingAlone && run.length > 1 && R_(run[0]) === 13);
+    const seen = new Set(), path = []; let nodes = 0;
+    const key = () => f.join(',') + '|' + ti + '|' + Math.min(sw, 9) + '|' + talon.length + '|' +
+      cols.map(c => c.down.length + ':' + c.up.join('.')).sort().join('/');
+    const done = () => cols.every(c => !c.down.length);
+    const flip = c => { if (!c.up.length && c.down.length){ c.up.push(c.down.pop()); return true; } return false; };
+    function dfs(){
+      if (done()) return true;
+      if (++nodes > budget) throw 'budget';
+      const k = key(); if (seen.has(k)) return false; seen.add(k);
+      const moves = [];
+      // 1. tableau to foundation
+      cols.forEach((c, i) => { if (c.up.length && homeOK(c.up[c.up.length - 1])) moves.push({t: 'th', i, pri: c.up.length === 1 && c.down.length ? 0 : 2}); });
+      // 2. tableau runs: whole face-up run (turns a card or clears a column), or a split that lets the card under it go home
+      cols.forEach((c, i) => {
+        for (let k = 0; k < c.up.length; k++){
+          const run = c.up.slice(k);
+          if (!liftOK(run)) continue;
+          const split = k > 0;
+          if (split && !homeOK(c.up[k - 1])) continue;
+          cols.forEach((d, j) => {
+            if (j === i || !onto(run[0], d, run.length)) return;
+            if (!d.up.length && !d.down.length && !split && !c.down.length) return;          // an empty column to an empty column
+            moves.push({t: 'tt', i, j, k, pri: split ? 3 : c.down.length ? 1 : 4});
+          });
+        }
+      });
+      // 3. talon: every card reachable by drawing on (and turning the pile, if allowed), played home or onto the tableau
+      const reach = [];
+      if (ti > 0) reach.push([ti, 0]);
+      for (let p = ti + draw; p < talon.length + draw; p += draw) reach.push([Math.min(p, talon.length), 0]);
+      if (sw < maxSw) for (let p = draw; p < talon.length + draw; p += draw){ const q = Math.min(p, talon.length); if (q <= ti) reach.push([q, 1]); }      // cards already passed need a turn of the pile
+      const tried = new Set();
+      for (const [p, cost] of reach){
+        if (p <= 0 || p > talon.length) continue;
+        const id = p + ':' + cost; if (tried.has(id)) continue; tried.add(id);
+        const x = talon[p - 1];
+        if (homeOK(x)) moves.push({t: 'wh', p, cost, pri: 2 + cost});
+        cols.forEach((d, j) => { if (onto(x, d)) moves.push({t: 'wt', p, cost, j, pri: 3 + cost + (d.up.length ? 0 : 1)}); });
+      }
+      moves.sort((a, b) => a.pri - b.pri);
+      for (const m of moves){
+        // apply
+        let undo;
+        if (m.t === 'th'){ const c = cols[m.i], x = c.up.pop(); f[S_(x)]++; const fl = flip(c); undo = () => { if (fl) c.down.push(c.up.pop()); c.up.push(x); f[S_(x)]--; }; }
+        else if (m.t === 'tt'){ const c = cols[m.i], d = cols[m.j], run = c.up.splice(m.k); d.up.push(...run); let home = null;
+          if (m.k > 0){ home = c.up.pop(); f[S_(home)]++; }
+          const fl = flip(c);
+          undo = () => { if (fl) c.down.push(c.up.pop()); if (home != null){ f[S_(home)]--; c.up.push(home); } d.up.splice(d.up.length - run.length); c.up.push(...run); }; }
+        else { const oti = ti, osw = sw, x = talon[m.p - 1]; talon.splice(m.p - 1, 1); ti = m.p - 1; sw += m.cost;
+          if (m.t === 'wh'){ f[S_(x)]++; undo = () => { f[S_(x)]--; talon.splice(m.p - 1, 0, x); ti = oti; sw = osw; }; }
+          else { cols[m.j].up.push(x); undo = () => { cols[m.j].up.pop(); talon.splice(m.p - 1, 0, x); ti = oti; sw = osw; }; } }
+        path.push(m);
+        if (dfs()) return true;
+        path.pop(); undo();
+      }
+      return false;
+    }
+    try { const r = dfs() ? 'win' : 'lose'; api.path = r === 'win' ? path.slice() : null; api.nodes = nodes; return r; }
+    catch (e){ api.path = null; api.nodes = nodes; if (e === 'budget') return 'unknown'; throw e; }
+  }
+  const api = {solve, path: null, nodes: 0};
+  return api;
+})();
+/* SOLVER END */
 const won = () => founds.every(f => f.cards.length === 13);
 // the same checks with the contract's rules applied (see P() below)
 const homeOK = (c, f) => canFound(c, f) && !(P().parity && f.cards.length - Math.min(...founds.map(x => x.cards.length)) >= 2);
@@ -1249,16 +1331,75 @@ function resetRun(close){
   if (LAB) labInit();
   table.classList.remove('strike'); hud(); measure(); crew.forEach(p => goHome(p)); talks.hidden = true;
 }
-async function newGame(){
-  if (union && mode === 'work' && dealOpen && !booting){ endDeal(anyMove() ? 'left' : 'out'); return; }     // leaving a deal shows its card first
-  if (union && run.wins >= RUN_WINS){ booting = false; save(); return showMinutes(); }
-  if (union && !booting) runDeal++;
-  crew.forEach(p => { p.tally = newTally(); });
-  gameOver = false; table.classList.remove('party'); $('win').hidden = true; $('win').classList.remove('wide'); talks.hidden = true;
-  table.querySelectorAll('.bit').forEach(b => b.remove());
-  cards.forEach(c => c.el.classList.remove('grudge')); grudge = null; brief = null;
-  const deck = cards.slice();
-  for (let i = deck.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+/* Deal only winnable deals: shuffle, then let the solver prove a win under the rules the deal will be played by.
+   Up to 60 shuffles at 3,000 positions each: a proof usually takes a few milliseconds, and a small budget gives up on hard
+   shuffles fast (all deals proved within 0.3 s on a laptop in tests/winnable.py). A small budget leans toward deals whose win
+   is easy to find. If no shuffle is proved, the last one stands. */
+const SC = c => ({r: c.rank, s: SUITS.indexOf(c.suit), up: c.up});
+function dealRules(){
+  const p = P();
+  return {draw: p.draw, sweeps: p.sweeps > 99 ? null : p.sweeps - (LAB ? lab.extra : 0), maxRun: p.maxRun, kingAlone: p.kingAlone, parity: p.parity, floor: p.floor};
+}
+function layoutOf(deck){          // the tableau and talon this deck would make, dealt the way newGame deals it
+  const d = deck.slice(), t = Array.from({length: 7}, () => []);
+  for (let i = 0; i < 7; i++) for (let k = 0; k <= i; k++){ const c = d.pop(); t[i].push({r: c.rank, s: SUITS.indexOf(c.suit), up: k === i}); }
+  return {tabs: t, talon: d.slice().reverse().map(c => ({r: c.rank, s: SUITS.indexOf(c.suit), up: false}))};
+}
+let lastCheck = null;
+/* Plays the solver's proof through the game's own rule checks, on the cards only (no crew, no energy), then puts the
+   table back. For the smoke test: a proof the game would refuse is a bug in the solver. */
+function replayProof(path){
+  const snap = snapshot(), sw0 = sweepsThisDeal; let err = null;
+  const flip = col => { const u = top(col); if (u && !u.up) u.up = true; };
+  const mv = (src, n, dest) => { const run = src.cards.splice(src.cards.length - n, n); dest.cards.push(...run); };
+  try {
+    for (const [n, m] of path.entries()){
+      if (m.t === 'th'){ const col = tabs[m.i], c = top(col), f = founds.find(f => homeOK(c, f)); if (!f) throw `${n}: ${cardName(c)} cannot go home`; mv(col, 1, f); flip(col); }
+      else if (m.t === 'tt'){ const col = tabs[m.i], first = col.cards.findIndex(c => c.up), run = col.cards.slice(first + m.k), d = tabs[m.j];
+        if (!liftOK(run)) throw `${n}: run from ${cardName(run[0])} too heavy`;
+        if (!legal(run, col, d)) throw `${n}: ${cardName(run[0])} cannot go to column ${m.j}`;
+        mv(col, run.length, d);
+        if (m.k > 0){ const c = top(col), f = founds.find(f => homeOK(c, f)); if (!f) throw `${n}: ${cardName(c)} cannot go home after a split`; mv(col, 1, f); }
+        flip(col); }
+      else {
+        const tal = [...waste.cards, ...stock.cards.slice().reverse()], want = tal[m.p - 1];
+        if (!want) throw `${n}: no talon card at ${m.p}`;
+        if (m.cost){ while (stock.cards.length){ for (let k = P().draw; k > 0 && stock.cards.length; k--){ const c = stock.cards.pop(); c.up = true; waste.cards.push(c); } }
+          if (sweepsThisDeal >= P().sweeps) throw `${n}: no turns of the pile left`;
+          stock.cards = waste.cards.reverse(); waste.cards = []; stock.cards.forEach(c => { c.up = false; }); sweepsThisDeal++; }
+        let guard = 0;
+        while (top(waste) !== want && guard++ < 60){
+          if (!stock.cards.length) throw `${n}: ${cardName(want)} not reachable`;
+          for (let k = P().draw; k > 0 && stock.cards.length; k--){ const c = stock.cards.pop(); c.up = true; waste.cards.push(c); }
+        }
+        if (top(waste) !== want) throw `${n}: ${cardName(want)} not on top`;
+        if (m.t === 'wh'){ const f = founds.find(f => homeOK(want, f)); if (!f) throw `${n}: ${cardName(want)} cannot go home from the waste`; mv(waste, 1, f); }
+        else { if (!legal([want], waste, tabs[m.j])) throw `${n}: ${cardName(want)} cannot go to column ${m.j}`; mv(waste, 1, tabs[m.j]); }
+      }
+    }
+    if (!tabs.every(t => t.cards.every(c => c.up))) throw 'end: cards still face down';
+  } catch (e){ err = String(e); }
+  restore(snap); sweepsThisDeal = sw0;
+  return err;
+}
+function winnableDeck(){
+  const rules = dealRules(); let deck = null, tries = 0, res = 'unknown';
+  const t0 = performance.now();
+  while (tries < 60){
+    tries++; deck = cards.slice();
+    for (let i = deck.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+    const L = layoutOf(deck); res = FeltSolver.solve(L.tabs, L.talon, rules, 3000);
+    if (res === 'win') break;
+  }
+  lastCheck = {res, tries, ms: Math.round(performance.now() - t0), rules, path: FeltSolver.path};
+  return deck;
+}
+function checkTable(){            // is the deal on the table still winnable under the current rules?
+  const res = FeltSolver.solve(tabs.map(t => t.cards.map(SC)), [...waste.cards, ...stock.cards.slice().reverse()].map(SC), Object.assign(dealRules(), {}), 20000);
+  return res;
+}
+async function dealCards(){
+  const deck = winnableDeck();
   piles.forEach(p => { p.cards = []; }); deck.forEach(c => { c.up = false; });
   for (let t = 0; t < 7; t++) for (let k = 0; k <= t; k++){ const c = deck.pop(); c.up = k === t; tabs[t].cards.push(c); }
   stock.cards = deck; moves = 0; undoStack = []; sweepsThisDeal = 0; sinceNap = 0; fastLeft = 0; hud();
@@ -1276,7 +1417,17 @@ async function newGame(){
   await sleep(28*16 + 420);
   cards.forEach(c => { c.el.style.transitionDelay = ''; });
   applyLayout(false, true);
-  const resume = booting && !!(SV0 && SV0.mode !== 'talks' && SV0.deal); booting = false;      // a deal that had already ended does not come back free      // a reload comes back to the deal you were on, as it was
+}
+async function newGame(){
+  if (union && mode === 'work' && dealOpen && !booting){ endDeal(anyMove() ? 'left' : 'out'); return; }     // leaving a deal shows its card first
+  if (union && run.wins >= RUN_WINS){ booting = false; save(); return showMinutes(); }
+  if (union && !booting) runDeal++;
+  crew.forEach(p => { p.tally = newTally(); });
+  gameOver = false; table.classList.remove('party'); $('win').hidden = true; $('win').classList.remove('wide'); talks.hidden = true;
+  table.querySelectorAll('.bit').forEach(b => b.remove());
+  cards.forEach(c => c.el.classList.remove('grudge')); grudge = null; brief = null;
+  await dealCards();
+  const resume = booting && !!(SV0 && SV0.mode !== 'talks' && SV0.deal); booting = false;      // a deal that had already ended does not come back free; a reload comes back to the deal you were on, as it was
   if (union && mode === 'work'){
     if (resume){
       startShift(false, true);
@@ -1482,7 +1633,9 @@ function sign(){
   otLog = []; lastUp = 0; lastCall = false; seen.noRelief = 0; seen.cl = {};
   eCap = 0; eCap = P().eMax;
   if (again){ shift = false; dealOpen = false; gameOver = true; OT = 0; }
-  else if (fromStrike){ shift = true; dealOpen = true; dealLog = []; E = Math.round(P().eMax/2); OT = 0; breaksLeft = P().breaks; } else startShift(false);
+  else if (fromStrike){ shift = true; dealOpen = true; dealLog = []; E = Math.round(P().eMax/2); OT = 0; breaksLeft = P().breaks; }
+  else if (checkTable() !== 'win') enqueue({type: 'redeal'});      // the deal on the table can't be proved winnable under the new terms: deal one that can
+  else startShift(false);
   save(); hud();
   applyLayout(true);
   showPanel(`<h2>Contract ratified</h2>` +
@@ -1548,6 +1701,7 @@ async function pump(){
       else if (a.type === 'strike') await startStrike();
       else if (a.type === 'lost') await lostRun();
       else if (a.type === 'undo') doUndo();
+      else if (a.type === 'redeal'){ await dealCards(); if (mode === 'work' && union) startShift(false); }
       else if (a.type === 'end'){ if (mode === 'work' && dealOpen && !gameOver) endDeal(a.kind); }
       else if (a.type === 'break'){
         if (mode === 'work' && union && breaksLeft > 0 && !gameOver){ breaksLeft--; stats.breaks++; hud();
@@ -1717,6 +1871,13 @@ window.__felt = {piles, cards, stock, waste, founds, tabs, crew, enqueue, findDe
   state: () => ({moves, gameOver, mode, union, G, E, OT, clauses, dealOpen, sweeps: sweepsThisDeal, stuck: !!seen.stuck, dealsLeft, breaksLeft, fastLeft, stats, grudge: grudge && grudge.id, brief, talk: talk && {T: talk.T, rows: talk.rows, offers: talk.offers, fixed: talk.fixed}, nCon, known, runDeal, run, local: meta.local,
     steward: steward.name, cast: crew.map(p => ({name: p.name, habit: p.habit, known: !!p.known, did: p.did, stance: p.stance})),
     otLog, crew: crew.map(p => ({role: p.role, act: p.act, load: p.load, x: Math.round(p.x), y: Math.round(p.y)}))}),
+  lastCheck: () => lastCheck && {res: lastCheck.res, tries: lastCheck.tries, ms: lastCheck.ms, rules: lastCheck.rules},
+  replayProof: () => lastCheck && lastCheck.path ? replayProof(lastCheck.path) : 'no proof',
+  checkTable: () => checkTable(),
+  proveDeal: () => { const deck = winnableDeck(); piles.forEach(p => { p.cards = []; }); deck.forEach(c => { c.up = false; });
+    for (let t = 0; t < 7; t++) for (let k = 0; k <= t; k++){ const c = deck.pop(); c.up = k === t; tabs[t].cards.push(c); }
+    stock.cards = deck; sweepsThisDeal = 0;
+    return {res: lastCheck.res, tries: lastCheck.tries, ms: lastCheck.ms, replay: lastCheck.path ? replayProof(lastCheck.path) : 'no proof'}; },
   lab: () => LAB && Object.assign({cash: cash(), home: home()}, lab), buy: k => buy(k),
   setFast: v => { fast = v; }, setE: v => { E = v; hud(); }, setG: v => { G = v; hud(); }, paceShakes: () => paceShakes,
   // late in a run, for playtests about the end: so many deals won, so many of the crew against
