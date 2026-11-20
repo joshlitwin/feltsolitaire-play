@@ -258,7 +258,8 @@
   #talks div.term{border-radius:10px;padding:6px 10px;margin:0 0 7px;font-weight:700;background:#e4dccb;color:#6b5a48;outline:2px dashed rgba(70,40,10,.25);outline-offset:-4px}
   #talks div.term.on{background:#bfe8a8;color:inherit;outline-color:rgba(40,90,30,.6)}
   #sub{display:flex;gap:8px;align-items:baseline;padding-left:6px}
-  button.link{background:none;outline:none;box-shadow:none;min-height:0;padding:0;color:#f6e6c8;text-decoration:underline;font-size:12px}
+  button.link,a.link{background:none;outline:none;box-shadow:none;min-height:0;padding:0;color:#f6e6c8;text-decoration:underline;font-size:12px;font-weight:800}
+  #sub a.link{margin-left:10px;white-space:nowrap}
   button.link[hidden]{display:none}
   #thread{display:inline-block;width:54px;height:4px;border-radius:2px;background:rgba(0,0,0,.3);overflow:hidden;align-self:center}
   #thread i{display:block;height:100%;background:#f6e6c8;transition:width .4s}
@@ -325,7 +326,7 @@
 
 <div id="app">
   <header id="bar">
-    <div id="brand"><h1 id="title">Felt Solitaire</h1><div id="sub"><span id="moves" aria-live="polite">0 moves</span><button id="clink" class="link" type="button" hidden>terms</button></div></div>
+    <div id="brand"><h1 id="title">Felt Solitaire</h1><div id="sub"><span id="moves" aria-live="polite">0 moves</span><button id="clink" class="link" type="button" hidden>terms</button><a id="modelink" class="link" href="?mode=classic">just solitaire</a></div></div>
     <button id="undo" type="button">Undo</button>
     <button id="hint" type="button">Hint</button>
     <button id="pace" type="button" title="The crew carries at double speed for 8 moves">Faster »</button>
@@ -556,7 +557,7 @@ function ruleSay(key, line){
 function gripe(kind, who){
   if (union || mode !== 'work' || freeRide || OT > 0 || !who) return;
   const n = gripeN[kind] = (gripeN[kind] || 0) + 1;
-  if (n <= 2 || n % 4 === 0) say(who, GRIPES[kind][n === 1 ? 0 : 1], 2400);
+  if (!CLASSIC && (n <= 2 || n % 4 === 0)) say(who, GRIPES[kind][n === 1 ? 0 : 1], 2400);
 }
 const WHY = {single: ['single card', 'single cards'], stack: ['stack', 'stacks'], face: ['face card', 'face cards'], stock: ['card off the stock', 'cards off the stock'],
   sweep: ['waste-pile reset', 'waste-pile resets'], undo: ['undo', 'undos'], hint: ['hint', 'hints'], fast: ['press of Faster', 'presses of Faster'], fee: ['✕ card fee', '✕ card fees']};
@@ -606,7 +607,9 @@ const TERMS_B = [
   {k: 'peek', up: 'A look under one face-down card every deal', down: 'no suit goes more than two ahead of the others', on: () => { clauses.consult = true; }},
   {k: 'temp', up: 'A temp every deal for one stack over six', down: 'the pile turns one time fewer', on: () => { lab.extra -= 1; }},
 ];
-const SAVE_KEY = LAB ? 'felt-lab-' + LAB : 'felt-union';
+/* Just solitaire (?mode=classic): the felt table and crew, no energy, no walkout, no talks. Its own save slot. */
+const CLASSIC = (() => { try { return new URLSearchParams(location.search).get('mode') === 'classic'; } catch (e) { return false; } })() && !LAB;
+const SAVE_KEY = CLASSIC ? 'felt-classic' : LAB ? 'felt-lab-' + LAB : 'felt-union';
 const LABP = {start: LAB === 'deal' ? 20 : 0, clearPay: 30, pass: 8, temp: 10, peek: 4, rest: 6, restStep: 3, redeal: 15, otBase: 2, eBase: 40};
 let lab = {bank: LABP.start, spent: 0, otPaid: 0, payOT: false, extra: 0, temp: false, peek: false, rests: 0, earned: 0, spentRun: 0};     // a deal under contract that has not been logged yet; the first deal after a page load
 try {
@@ -893,7 +896,7 @@ function relieve(){
     if (!inn) continue;
     const t = out.tally, bad = t.undone >= 2 || t.fast >= 1 || t.ot >= 1, good = !bad && !t.undone && t.carries >= 4 && out.stance < 0 && E >= P().eMax*.5;
     const moved = false;      // stance moves only at the end of a deal, where the card says who and why (panel round 3)
-    say(out, shiftLine(t) + (moved ? (bad ? ' Noted.' : ' Fine.') : ''), 3400);
+    if (!CLASSIC) say(out, shiftLine(t) + (moved ? (bad ? ' Noted.' : ' Fine.') : ''), 3400);
     inn.role = 'floor'; inn.post = out.post; inn.load = 0; inn.tally = newTally(); inn.seed = '';
     out.role = 'bench'; out.slot = inn.slot; out.seq = ++benchSeq; out.load = 0; out.wx = 0;
   }
@@ -939,7 +942,7 @@ setInterval(() => {
 
 /* ---------------- energy, overtime, goodwill ---------------- */
 function spend(n, x, y, why){
-  if (mode !== 'work' || freeRide) return;
+  if (mode !== 'work' || freeRide || CLASSIC) return;
   if (LAB === 'foreman' && mode === 'work'){
     const i = lab.sel, w = lab.fm[i]; if (!w) return;
     const c = fmCost(i, why || 'single'); w.st = Math.max(0, w.st - c); w.last = ++lab.n; floatText(x, y, '−' + c);
@@ -981,6 +984,8 @@ function hud(){
   $('undo').textContent = working && p.noUndo ? 'No undo' : union && working ? `Undo −${p.undo}` : 'Undo';
   $('undo').disabled = !undoStack.length || (working && p.noUndo) || (union && gameOver && !dealOpen);
   $('clink').hidden = !union;
+  $('modelink').hidden = union && !CLASSIC; $('modelink').textContent = CLASSIC ? 'full game' : 'just solitaire'; $('modelink').href = CLASSIC ? './' : '?mode=classic';
+  if (CLASSIC){ $('hud').style.display = 'none'; $('pace').style.display = 'none'; }
   $('title').textContent = union ? 'Felt ' + LOCAL() : 'Felt Solitaire';
   $('app').classList.toggle('u', union); $('hint').textContent = union && working ? `Hint −${p.hint}` : 'Hint';
   $('break').style.display = union && !BARE ? '' : 'none';
@@ -1020,7 +1025,7 @@ function hud(){
   cards.forEach(c => c.el.classList.toggle('wait', !!p.parity && c.pile && c.pile.type === 'found' && c === top(c.pile) && c.pile.cards.length < 13 && c.pile.cards.length - low >= 2));
   const b = $('pace'), shut = working && p.noFast;
   b.disabled = shut;
-  b.style.display = shut ? 'none' : '';
+  b.style.display = shut || CLASSIC ? 'none' : '';
   b.textContent = !working ? 'Talks' : shut ? 'No faster' : fastLeft > 0 ? `Fast · ${fastLeft}` : union ? 'Faster −3' : 'Faster »';
   table.style.setProperty('--step', (.26/tire()).toFixed(2) + 's');
   refreshBench(true);
@@ -1900,7 +1905,7 @@ $('hint').addEventListener('click', () => {
   if (h.c){ h.c.el.classList.add('hinted'); setTimeout(() => h.c.el.classList.remove('hinted'), 1700); }
   else { const sl = document.querySelector('.slot.stock'); sl.classList.add('hot'); setTimeout(() => sl.classList.remove('hot'), 1700); }
   if (h.d){ const el = document.createElement('div'), at = landing(h.d); el.className = 'hint hot'; place(el, at.x, at.y); table.appendChild(el); setTimeout(() => el.remove(), 1700); }
-  if (freeRide) return;
+  if (freeRide || CLASSIC) return;
   if (union && !h.d) return say(who, 'Turn the pile. That much is free.', 2600);
   stats.hints = (stats.hints || 0) + 1; if (union) hintPaid++; else hintN++;
   const cost = union ? P().hint : 1;
